@@ -112,6 +112,21 @@ irm https://raw.githubusercontent.com/tinyhumansai/openhuman/main/scripts/instal
 
 A separately signed script-install path is not currently available. Issue [#2620](https://github.com/tinyhumansai/openhuman/issues/2620) is closed after the native package paths were promoted, but current release assets do not include `install.sh.asc` / `install.ps1.asc` for pre-execution script verification. Treat the script install path as unverified and prefer the native package options above when possible.
 
+## Quick start — CLI (interactive coding assistant)
+
+```bash
+# Install via npm (any platform with Node.js 18+)
+npm install -g openhuman
+openhuman chat
+
+# Or via Homebrew (macOS)
+brew tap tinyhumansai/core
+brew install openhuman
+openhuman chat
+```
+
+The CLI gives you the full OpenHuman agent in your terminal: chat, code, shell, git, web search, and memory — same capabilities as the desktop app. See [`packages/npm/README.md`](./packages/npm/README.md).
+
 # What is OpenHuman?
 
 OpenHuman is an open-source agentic assistant designed to integrate with you in your daily life. Each bullet links to the deeper writeup in the [docs](https://tinyhumans.gitbook.io/openhuman/).

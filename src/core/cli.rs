@@ -56,9 +56,14 @@ pub fn run_from_cli_args(args: &[String]) -> Result<()> {
     load_dotenv_for_cli()?;
 
     let grouped = grouped_schemas();
-    if args.is_empty() || is_help(&args[0]) {
+
+    if args.first().map(String::as_str).is_some_and(is_help) {
         print_general_help(&grouped);
         return Ok(());
+    }
+    // Default: `openhuman` with no args starts interactive chat
+    if args.is_empty() {
+        return crate::core::chat_cli::run_chat_command(&[]);
     }
 
     // Match on the first argument to determine the subcommand.
@@ -80,6 +85,7 @@ pub fn run_from_cli_args(args: &[String]) -> Result<()> {
         "subconscious" | "sub" => {
             crate::core::subconscious_cli::run_subconscious_command(&args[1..])
         }
+        "chat" => crate::core::chat_cli::run_chat_command(&args[1..]),
         "agent" => {
             log::debug!(
                 "[cli] dispatching to agent subcommand, args={:?}",
@@ -563,6 +569,7 @@ fn print_general_help(grouped: &BTreeMap<String, Vec<ControllerSchema>>) {
         "  openhuman mcp [-v|--verbose]              (stdio MCP server; read-only memory tools)"
     );
     println!("  openhuman skills <subcommand> [options]   (skill development runtime)");
+    println!("  openhuman chat [--model <name>]             (interactive chat session)");
     println!("  openhuman agent <subcommand> [options]    (inspect agent definitions & prompts)");
     println!("  openhuman voice [--hotkey <combo>] [--mode <tap|push>]  (voice dictation server)");
     println!("  openhuman tree-summarizer <subcommand> [options]  (summary tree CLI)");
