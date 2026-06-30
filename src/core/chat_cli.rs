@@ -21,6 +21,8 @@
 //!   /usage      Show token/cycle usage
 //!   /tools      List available tools
 
+use std::io::{stdout, Write};
+
 use anyhow::{anyhow, Result};
 use console::style;
 use dialoguer::{Input, Select};
@@ -211,6 +213,46 @@ fn show_json(v: &serde_json::Value) {
     }
 }
 
+/// Read a line of input character-by-character in raw mode.
+/// If the very first character is `/`, return it immediately (triggers menu).
+fn read_line_raw(term: &console::Term, prompt: &str) -> String {
+    let _ = term.write_str(&format!("{} ", prompt));
+    let _ = stdout().flush();
+
+    let mut buf = String::new();
+    let mut first = true;
+    loop {
+        let c = match term.read_char() {
+            Ok(c) => c,
+            Err(_) => break,
+        };
+        match c {
+            '\n' | '\r' => {
+                let _ = term.write_line("");
+                break;
+            }
+            '\x7f' | '\x08' => {
+                if buf.pop().is_some() {
+                    let _ = term.write_str("\x08 \x08");
+                }
+            }
+            '\x03' => break,
+            c => {
+                if first && c == '/' {
+                    let _ = term.write_line("");
+                    return "/".to_string();
+                }
+                first = false;
+                buf.push(c);
+                let _ = term.write_str(&c.to_string());
+                let _ = stdout().flush();
+            }
+        }
+        if c == '\x03' { break; }
+    }
+    buf
+}
+
 fn run_interactive_session(model: Option<String>, temperature: Option<f64>) -> Result<()> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -237,18 +279,12 @@ fn run_interactive_session(model: Option<String>, temperature: Option<f64>) -> R
         show_welcome();
 
         loop {
-            let input: String = match Input::new()
-                .with_prompt(style("you").cyan().bold().to_string())
-                .allow_empty(true)
-                .interact_text()
-            {
-                Ok(text) => text,
-                Err(_) => break,
-            };
+            let prompt = style("you").cyan().bold().to_string();
+            let input = read_line_raw(&term, &prompt);
 
             let trimmed = input.trim().to_string();
 
-            if trimmed == "/" || trimmed.is_empty() {
+            if trimmed.is_empty() {
                 if let Some(cmd) = show_menu() {
                     if !exec_cmd(cmd, "", &mut config, &mut agent, &rt).await { break; }
                 }
