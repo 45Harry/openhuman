@@ -45,7 +45,7 @@ openhuman chat
 
 Starts a full-screen TUI (terminal user interface) with the OpenHuman agent.
 
-```
+```text
 ┌──────────────────────────────────────────────────────┐
 │  ▗▄▖ ▄▄▄▄  ▗▞▀▚▖▄▄▄▄  ▗▖ ▗▖█  ▐▌▄▄▄▄  ▗▞▀▜▌▄▄▄▄   │
 │  chat  code  shell  git  memory — terminal AI assistant│

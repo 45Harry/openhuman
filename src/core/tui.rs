@@ -32,17 +32,11 @@ struct App {
     thinking: bool,
 }
 
+// Only commands the TUI actually handles are advertised in the palette.
+// (Auth/model/threads/memory/etc. aren't wired to handlers yet — listing them
+// here would promise actions that don't work.)
 const CMDS: &[(&str, &str)] = &[
-    ("help", "Show all commands"),
-    ("model", "Switch AI model"),
-    ("login", "Authenticate"),
-    ("logout", "De-authenticate"),
-    ("status", "Show auth status"),
-    ("threads", "List threads"),
-    ("new", "Start fresh thread"),
-    ("memory", "Browse memory"),
-    ("files", "Browse files"),
-    ("config", "Show settings"),
+    ("help", "Show available commands"),
     ("exit", "Quit"),
 ];
 
@@ -52,8 +46,21 @@ pub fn run_tui(tx_input: mpsc::Sender<String>, rx_resp: mpsc::Receiver<String>) 
     use std::io::stdout;
 
     crossterm::terminal::enable_raw_mode()?;
-    crossterm::execute!(stdout(), crossterm::terminal::EnterAlternateScreen)?;
-    let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
+    // If alternate-screen entry or terminal construction fails after raw mode is
+    // already on, restore the terminal before returning so we never strand the
+    // user in raw mode / the alternate screen.
+    if let Err(e) = crossterm::execute!(stdout(), crossterm::terminal::EnterAlternateScreen) {
+        let _ = crossterm::terminal::disable_raw_mode();
+        return Err(e.into());
+    }
+    let mut terminal = match Terminal::new(CrosstermBackend::new(stdout())) {
+        Ok(t) => t,
+        Err(e) => {
+            let _ = crossterm::execute!(stdout(), crossterm::terminal::LeaveAlternateScreen);
+            let _ = crossterm::terminal::disable_raw_mode();
+            return Err(e.into());
+        }
+    };
 
     let mut app = App {
         msgs: vec![],
@@ -140,9 +147,11 @@ fn handle_key(key: KeyEvent, app: &mut App) -> Action {
             app.menu_idx = 0;
             Action::Continue
         }
+        // `cursor` is a BYTE offset kept on a UTF-8 char boundary, so
+        // insert/remove never split a multibyte codepoint (which would panic).
         KeyCode::Char(c) => {
             app.input.insert(app.cursor, c);
-            app.cursor += 1;
+            app.cursor += c.len_utf8();
             if app.input == "/" {
                 app.menu = true;
                 app.menu_idx = 0;
@@ -150,9 +159,9 @@ fn handle_key(key: KeyEvent, app: &mut App) -> Action {
             Action::Continue
         }
         KeyCode::Backspace => {
-            if app.cursor > 0 {
-                app.input.remove(app.cursor - 1);
-                app.cursor -= 1;
+            if let Some(prev) = app.input[..app.cursor].chars().next_back() {
+                app.cursor -= prev.len_utf8();
+                app.input.remove(app.cursor);
             }
             if app.input.is_empty() { app.menu = false; }
             Action::Continue
@@ -161,8 +170,18 @@ fn handle_key(key: KeyEvent, app: &mut App) -> Action {
             if app.cursor < app.input.len() { app.input.remove(app.cursor); }
             Action::Continue
         }
-        KeyCode::Left => { app.cursor = app.cursor.saturating_sub(1); Action::Continue }
-        KeyCode::Right => { if app.cursor < app.input.len() { app.cursor += 1; } Action::Continue }
+        KeyCode::Left => {
+            if let Some(prev) = app.input[..app.cursor].chars().next_back() {
+                app.cursor -= prev.len_utf8();
+            }
+            Action::Continue
+        }
+        KeyCode::Right => {
+            if let Some(next) = app.input[app.cursor..].chars().next() {
+                app.cursor += next.len_utf8();
+            }
+            Action::Continue
+        }
         KeyCode::Home => { app.cursor = 0; Action::Continue }
         KeyCode::End => { app.cursor = app.input.len(); Action::Continue }
         KeyCode::Enter => {
@@ -172,14 +191,22 @@ fn handle_key(key: KeyEvent, app: &mut App) -> Action {
             app.menu = false;
             if text.is_empty() { return Action::Continue; }
             if text == "/exit" || text == "/quit" { return Action::Quit; }
-            // Slash commands from the menu palette aren't wired to handlers yet.
-            // Surface a local notice instead of leaking `/login`, `/threads`,
-            // etc. to the model as chat text (which would otherwise happen).
+            if text == "/help" {
+                app.msgs.push(ChatMsg {
+                    sender: "system".into(),
+                    content: "Commands: /help — this list · /exit or /quit — leave. \
+                              Type anything else to chat."
+                        .into(),
+                });
+                return Action::Continue;
+            }
+            // Any other slash input isn't a wired command — surface a local
+            // notice instead of leaking it to the model as chat text.
             if text.starts_with('/') {
                 let name = text.trim_start_matches('/');
                 app.msgs.push(ChatMsg {
                     sender: "system".into(),
-                    content: format!("Command /{name} isn't available yet."),
+                    content: format!("Unknown command /{name}. Try /help."),
                 });
                 return Action::Continue;
             }
@@ -252,7 +279,12 @@ fn render_msgs(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let items: Vec<ListItem> = app.msgs.iter().map(|m| {
+    // Show the newest messages: keep only the last `inner.height` entries so
+    // recent output stays on-screen in long sessions. Without this the list
+    // always renders from the top and newer messages scroll off the bottom.
+    // (Approximate: counts one row per message, not wrapped height.)
+    let start = app.msgs.len().saturating_sub(inner.height as usize);
+    let items: Vec<ListItem> = app.msgs[start..].iter().map(|m| {
         let prefix = match m.sender.as_str() {
             "you" => format!(" {} ", ansi_style("you", CYAN)),
             "ai" | "assistant" => format!(" {} ", ansi_style("ai", Color::Green)),
