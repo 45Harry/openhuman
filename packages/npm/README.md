@@ -97,8 +97,25 @@ openhuman chat -v                # verbose logging
 
 | Command | Description |
 |---------|-------------|
-| `/exit`, `/quit` | End session |
-| `/help` | Show commands |
+| `/exit` / `/quit` | End session |
+| `/help` | Show all commands |
+| `/model` | Show/switch AI model (`/model <name>`) |
+| `/login` | Authenticate with token |
+| `/logout` | De-authenticate |
+| `/status` | Show auth status & user info |
+| `/threads` | List threads — select to view messages |
+| `/new` | Start a fresh thread |
+| `/memory` | List memory namespaces |
+| `/memory list \<ns\>` | List documents in a namespace |
+| `/memory query \<ns\> \<query\>` | Semantic memory search |
+| `/memory recall \<ns\>` | Recall context from memory |
+| `/files` | Browse memory files |
+| `/config` | Show full config snapshot |
+| `/config model` | Show model/provider settings |
+| `/config agent` | Show agent execution settings |
+| `/config paths` | Show agent file paths |
+
+Type `/` or press Enter on empty line to open the command menu. Partial matches show suggestions.
 
 ## Features
 
