@@ -170,8 +170,20 @@ fn handle_key(key: KeyEvent, app: &mut App) -> Action {
             app.input.clear();
             app.cursor = 0;
             app.menu = false;
+            if text.is_empty() { return Action::Continue; }
             if text == "/exit" || text == "/quit" { return Action::Quit; }
-            if !text.is_empty() { Action::Send(text) } else { Action::Continue }
+            // Slash commands from the menu palette aren't wired to handlers yet.
+            // Surface a local notice instead of leaking `/login`, `/threads`,
+            // etc. to the model as chat text (which would otherwise happen).
+            if text.starts_with('/') {
+                let name = text.trim_start_matches('/');
+                app.msgs.push(ChatMsg {
+                    sender: "system".into(),
+                    content: format!("Command /{name} isn't available yet."),
+                });
+                return Action::Continue;
+            }
+            Action::Send(text)
         }
         KeyCode::Tab => { app.menu = !app.menu; app.menu_idx = 0; Action::Continue }
         KeyCode::Esc => { app.menu = false; Action::Continue }

@@ -19,7 +19,9 @@ function rpcCall(method, params) {
     const body = JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
-      method: `openhuman.${method.replace('.', '_')}`,
+      // Replace every '.' (e.g. nested namespaces) so the method name is built
+      // correctly, not just the first separator.
+      method: `openhuman.${method.replace(/\./g, '_')}`,
       params: params || {},
     });
     const req = http.request(`${RPC_URL}`, {
@@ -39,6 +41,12 @@ function rpcCall(method, params) {
       });
     });
     req.on('error', reject);
+    // Without a timeout, a core that accepts the socket but never responds
+    // hangs the chat turn forever. Bound it and surface a clear error so the
+    // user can retry.
+    req.setTimeout(120000, () => {
+      req.destroy(new Error('RPC request timed out after 120s'));
+    });
     req.write(body);
     req.end();
   });
@@ -64,6 +72,20 @@ async function waitForCore(timeoutMs = 15000) {
 }
 
 async function runChat(args) {
+  // Match the Rust `chat_cli` behavior: print help on -h/--help instead of
+  // booting the core and dropping into the REPL.
+  if (args.includes('-h') || args.includes('--help')) {
+    console.log('');
+    console.log(' OpenHuman Chat — interactive coding assistant');
+    console.log('');
+    console.log(' Usage: openhuman chat [--model <name>]');
+    console.log('');
+    console.log(' In-session commands:');
+    console.log('   /exit, /quit   Quit');
+    console.log('   /help          Show commands');
+    console.log('');
+    return;
+  }
   if (!await isCoreRunning()) {
     console.log('[openhuman] Starting core...');
     const core = spawn(binPath, ['run', '--port', CORE_PORT], {
@@ -118,8 +140,14 @@ async function runChat(args) {
         message: trimmed,
         model_override: model,
       });
-      let text = typeof result === 'string' ? result : (result.response || result.result);
+      // Guard the object access: a null/undefined result would otherwise throw
+      // "Cannot read properties of null" inside the try and surface as a
+      // confusing error rather than an empty response.
+      let text;
+      if (typeof result === 'string') text = result;
+      else if (result && typeof result === 'object') text = result.response || result.result;
       if (text && typeof text === 'object') text = text.response || JSON.stringify(text);
+      if (text == null) text = '(no response)';
       console.log('');
       console.log(text);
       console.log('');

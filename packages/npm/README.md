@@ -61,7 +61,7 @@ Starts a full-screen TUI (terminal user interface) with the OpenHuman agent.
 ### One-shot query
 
 ```bash
-openhuman call --method openhuman.agent_chat --params '{"message": "explain git rebase in one sentence"}'
+openhuman call --method agent.chat --params '{"message": "explain git rebase in one sentence"}'
 ```
 
 ### Server mode
