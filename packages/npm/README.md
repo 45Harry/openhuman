@@ -43,19 +43,19 @@ cargo build --bin openhuman-core
 openhuman chat
 ```
 
-Starts an interactive REPL. The agent remembers context across turns.
+Starts a full-screen TUI (terminal user interface) with the OpenHuman agent.
 
 ```
- ╔══════════════════════════════════════════╗
- ║    OpenHuman Interactive Chat           ║
- ║  /help for commands  /exit to quit      ║
- ╚══════════════════════════════════════════╝
-
-you> write a python script to rename all .jpg files in the current dir to yyyy-mm-dd format
-
-assistant> I'll create a script that renames .jpg files using their EXIF date or file modification time...
-
-you> now run it on my ~/Photos directory
+┌──────────────────────────────────────────────────────┐
+│  ▗▄▖ ▄▄▄▄  ▗▞▀▚▖▄▄▄▄  ▗▖ ▗▖█  ▐▌▄▄▄▄  ▗▞▀▜▌▄▄▄▄   │
+│  chat  code  shell  git  memory — terminal AI assistant│
+├──────────────────────────────────────────────────────┤
+│  you  write a python script to rename all .jpg...    │
+│  ai   I'll create a script that renames .jpg files...│
+│                                                      │
+├──────────────────────────────────────────────────────┤
+│ / Type a message or / for commands                   │
+└──────────────────────────────────────────────────────┘
 ```
 
 ### One-shot query
@@ -115,7 +115,19 @@ openhuman chat -v                # verbose logging
 | `/config agent` | Show agent execution settings |
 | `/config paths` | Show agent file paths |
 
-Type `/` or press Enter on empty line to open the command menu. Partial matches show suggestions.
+Type `/` to open the command menu instantly. Tab to toggle menu. Esc to close. Up/Down to navigate, Enter to select.
+
+### TUI controls
+
+| Key | Action |
+|-----|--------|
+| `/` | Open command menu (instant) |
+| `Tab` | Toggle menu |
+| `↑` `↓` | Navigate menu / scroll messages |
+| `Enter` | Select command / send message |
+| `Esc` | Close menu |
+| `Ctrl+C` | Quit |
+| `←` `→` `Home` `End` | Cursor navigation |
 
 ## Features
 
