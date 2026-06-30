@@ -3,19 +3,15 @@
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
-
-use crate::openhuman::agent::turn_origin::{AgentTurnOrigin, with_origin};
-use crate::openhuman::agent::Agent;
-use crate::openhuman::config::Config;
 
 const CYAN: Color = Color::Rgb(0, 200, 200);
 const DARK_BG: Color = Color::Rgb(10, 10, 14);
@@ -50,30 +46,7 @@ const CMDS: &[(&str, &str)] = &[
     ("exit", "Quit"),
 ];
 
-fn base_colors() -> Style {
-    Style::default().bg(DARK_BG).fg(Color::White)
-}
-
-fn logo_lines(area_width: u16) -> Vec<Line<'static>> {
-    let logo = [
-        " ▗▄▖ ▄▄▄▄  ▗▞▀▚▖▄▄▄▄  ▗▖ ▗▖█  ▐▌▄▄▄▄  ▗▞▀▜▌▄▄▄▄",
-        "▐▌ ▐▌█   █ ▐▛▀▀▘█   █ ▐▌ ▐▌▀▄▄▞▘█ █ █ ▝▚▄▟▌█   █",
-        "▐▌ ▐▌█▄▄▄▀ ▝▚▄▄▖█   █ ▐▛▀▜▌     █   █      █   █",
-        "▝▚▄▞▘█                ▐▌ ▐▌",
-        "     ▀",
-    ];
-    let tagline = "chat  code  shell  git  memory";
-    let mut lines: Vec<Line> = logo.iter().map(|s| {
-        Line::from(Span::styled(s.to_string(), Style::default().fg(CYAN).bold()))
-    }).collect();
-    lines.push(Line::from(Span::styled(
-        if area_width > 50 { format!("  {}  — terminal AI assistant", tagline) } else { String::new() },
-        Style::default().fg(Color::DarkGray),
-    )));
-    lines
-}
-
-pub fn run_tui(agent: &mut Agent, config: &mut Config) -> Result<()> {
+pub fn run_tui(tx_input: mpsc::Sender<String>, rx_resp: mpsc::Receiver<String>) -> Result<()> {
     use ratatui::backend::CrosstermBackend;
     use ratatui::Terminal;
     use std::io::stdout;
@@ -82,7 +55,6 @@ pub fn run_tui(agent: &mut Agent, config: &mut Config) -> Result<()> {
     crossterm::execute!(stdout(), crossterm::terminal::EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
-    let (tx, rx) = mpsc::channel::<String>();
     let mut app = App {
         msgs: vec![],
         input: String::new(),
@@ -98,7 +70,8 @@ pub fn run_tui(agent: &mut Agent, config: &mut Config) -> Result<()> {
     let res = loop {
         terminal.draw(|f| render(f, &app))?;
 
-        if let Ok(response) = rx.try_recv() {
+        // Check for agent responses (non-blocking)
+        if let Ok(response) = rx_resp.try_recv() {
             app.msgs.push(ChatMsg { sender: "ai".into(), content: response });
             app.thinking = false;
         }
@@ -107,19 +80,13 @@ pub fn run_tui(agent: &mut Agent, config: &mut Config) -> Result<()> {
         if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind != KeyEventKind::Press { continue; }
-                match handle_key(key, &mut app, &tx, agent, config) {
+                match handle_key(key, &mut app) {
                     Action::Continue => {}
-                    Action::Quit => break Ok::<_, anyhow::Error>(()),
+                    Action::Quit => break Ok(()),
                     Action::Send(msg) => {
                         app.msgs.push(ChatMsg { sender: "you".into(), content: msg.clone() });
                         app.thinking = true;
-                        let tx_c = tx.clone();
-                        let msg_c = msg.clone();
-                        // Run agent in its own thread (tokio runtime exists in caller)
-                        std::thread::spawn(move || {
-                            std::thread::sleep(Duration::from_millis(500));
-                            let _ = tx_c.send(format!("Echo: {}", msg_c));
-                        });
+                        let _ = tx_input.send(msg);
                     }
                 }
             }
@@ -130,8 +97,7 @@ pub fn run_tui(agent: &mut Agent, config: &mut Config) -> Result<()> {
     let _ = crossterm::execute!(stdout(), crossterm::terminal::LeaveAlternateScreen);
     crossterm::terminal::disable_raw_mode()?;
     terminal.show_cursor()?;
-    res?;
-    Ok(())
+    res
 }
 
 enum Action {
@@ -140,10 +106,7 @@ enum Action {
     Send(String),
 }
 
-fn handle_key(
-    key: KeyEvent, app: &mut App, _tx: &mpsc::Sender<String>,
-    _agent: &mut Agent, _config: &mut Config,
-) -> Action {
+fn handle_key(key: KeyEvent, app: &mut App) -> Action {
     if app.menu {
         match key.code {
             KeyCode::Esc | KeyCode::Char('/') => { app.menu = false; return Action::Continue; }
@@ -173,7 +136,6 @@ fn handle_key(
         KeyCode::Char(c) => {
             app.input.insert(app.cursor, c);
             app.cursor += 1;
-            // Auto-open menu when / is typed as first char
             if app.input == "/" {
                 app.menu = true;
                 app.menu_idx = 0;
@@ -223,9 +185,9 @@ fn render(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(7),   // logo
-            Constraint::Fill(1),     // messages
-            Constraint::Length(3),   // input
+            Constraint::Length(7),
+            Constraint::Fill(1),
+            Constraint::Length(3),
         ])
         .split(area);
 
@@ -236,13 +198,30 @@ fn render(f: &mut Frame, app: &App) {
     if app.menu { render_menu_popup(f, app, chunks[1]); }
 }
 
+fn logo_lines() -> Vec<Line<'static>> {
+    let logo = [
+        " ▗▄▖ ▄▄▄▄  ▗▞▀▚▖▄▄▄▄  ▗▖ ▗▖█  ▐▌▄▄▄▄  ▗▞▀▜▌▄▄▄▄",
+        "▐▌ ▐▌█   █ ▐▛▀▀▘█   █ ▐▌ ▐▌▀▄▄▞▘█ █ █ ▝▚▄▟▌█   █",
+        "▐▌ ▐▌█▄▄▄▀ ▝▚▄▄▖█   █ ▐▛▀▜▌     █   █      █   █",
+        "▝▚▄▞▘█                ▐▌ ▐▌",
+        "     ▀",
+    ];
+    logo.iter().map(|s| {
+        Line::from(Span::styled(s.to_string(), Style::default().fg(CYAN).bold()))
+    }).collect()
+}
+
 fn render_logo(f: &mut Frame, area: Rect) {
-    let block = Block::default()
-        .style(Style::default().bg(DARK_BG));
-    let lines = logo_lines(area.width);
-    let para = Paragraph::new(Text::from(lines))
-        .style(base_colors())
-        .block(block);
+    let lines = logo_lines();
+    let mut lines_vec: Vec<Line> = lines;
+    lines_vec.push(Line::from(Span::styled(
+        "  chat  code  shell  git  memory  —  terminal AI assistant",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let para = Paragraph::new(Text::from(lines_vec))
+        .style(Style::default().bg(DARK_BG))
+        .block(Block::default().style(Style::default().bg(DARK_BG)));
     f.render_widget(para, area);
 }
 
@@ -256,16 +235,18 @@ fn render_msgs(f: &mut Frame, app: &App, area: Rect) {
 
     let items: Vec<ListItem> = app.msgs.iter().map(|m| {
         let prefix = match m.sender.as_str() {
-            "you" => format!(" {} ", style_str("you", CYAN)),
-            "ai" | "assistant" => format!(" {} ", style_str("ai", Color::Green)),
-            _ => format!(" {} ", style_str(&m.sender, Color::Gray)),
+            "you" => format!(" {} ", ansi_style("you", CYAN)),
+            "ai" | "assistant" => format!(" {} ", ansi_style("ai", Color::Green)),
+            _ => format!(" {} ", ansi_style(&m.sender, Color::Gray)),
         };
-        let content = format!("{} {}", prefix, m.content);
-        ListItem::new(Text::raw(content)).style(base_colors())
+        ListItem::new(Text::raw(format!("{} {}", prefix, m.content)))
+            .style(Style::default().bg(DARK_BG))
     }).collect();
 
-    let list = List::new(items).style(Style::default().bg(DARK_BG));
-    f.render_widget(list, inner);
+    f.render_widget(
+        List::new(items).style(Style::default().bg(DARK_BG)),
+        inner,
+    );
 }
 
 fn render_input(f: &mut Frame, app: &App, area: Rect) {
@@ -276,18 +257,14 @@ fn render_input(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let placeholder = app.msgs.is_empty() && !app.thinking;
-    let text = if app.input.is_empty() && placeholder {
-        " Type a message or  /  for commands"
+    let (text, style) = if app.thinking {
+        (format!(" {} ◐ thinking...", app.input), Style::default().fg(Color::Yellow).bg(SURFACE))
+    } else if app.input.is_empty() && app.msgs.is_empty() {
+        (" Type a message or  /  for commands".into(), Style::default().fg(Color::DarkGray).bg(SURFACE))
     } else {
-        let prefix = if app.thinking { " ◐ thinking..." } else { "" };
-        &format!(" {}{}", app.input, prefix)
+        (format!(" {}", app.input), Style::default().fg(Color::White).bg(SURFACE))
     };
-    let style = if app.input.is_empty() && placeholder {
-        Style::default().fg(Color::DarkGray).bg(SURFACE)
-    } else {
-        Style::default().fg(Color::White).bg(SURFACE)
-    };
+
     f.render_widget(Paragraph::new(text).style(style), inner);
 
     if !app.menu {
@@ -311,7 +288,11 @@ fn render_menu_popup(f: &mut Frame, app: &App, area: Rect) {
 
     let items: Vec<ListItem> = cmds.iter().enumerate().map(|(i, (name, desc))| {
         let sel = i == app.menu_idx;
-        let st = if sel { Style::default().fg(Color::Black).bg(CYAN) } else { Style::default().fg(Color::White).bg(SURFACE) };
+        let st = if sel {
+            Style::default().fg(Color::Black).bg(CYAN)
+        } else {
+            Style::default().fg(Color::White).bg(SURFACE)
+        };
         ListItem::new(format!("/{:<12} {}", name, desc)).style(st)
     }).collect();
 
@@ -325,18 +306,15 @@ fn render_menu_popup(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(list, rect);
 }
 
-fn style_str(s: &str, color: Color) -> String {
-    use std::fmt::Write;
-    // Simple ANSI wrapper since we're in raw mode
+fn ansi_style(s: &str, color: Color) -> String {
     let code = match color {
         Color::Red => "31",
         Color::Green => "32",
         Color::Yellow => "33",
-        Color::Cyan | Color::Rgb(0, 200, 200) => "36",
         Color::Blue => "34",
+        Color::Cyan | Color::Rgb(0, 200, 200) => "36",
         Color::Gray | Color::DarkGray => "90",
         Color::White => "97",
-        Color::Rgb(_, _, _) => "36",
         _ => "0",
     };
     format!("\x1b[{}m{}\x1b[0m", code, s)
