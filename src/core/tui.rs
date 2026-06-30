@@ -142,6 +142,9 @@ fn handle_key(key: KeyEvent, app: &mut App) -> Action {
     }
 
     match key.code {
+        // Must precede the broad `Char(c)` arm below — otherwise Ctrl+C matches
+        // there and gets inserted as text instead of quitting.
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
         KeyCode::Char('/') if app.input.is_empty() => {
             app.menu = true;
             app.menu_idx = 0;
@@ -214,7 +217,6 @@ fn handle_key(key: KeyEvent, app: &mut App) -> Action {
         }
         KeyCode::Tab => { app.menu = !app.menu; app.menu_idx = 0; Action::Continue }
         KeyCode::Esc => { app.menu = false; Action::Continue }
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::Quit,
         _ => Action::Continue,
     }
 }
