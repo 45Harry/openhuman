@@ -252,19 +252,17 @@ fn read_line_raw(term: &console::Term, prompt: &str) -> String {
     }
     buf
 }
-
 fn run_interactive_session(model: Option<String>, temperature: Option<f64>) -> Result<()> {
+    let _ = model;
+    let _ = temperature;
+
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_stack_size(crate::core::runtime::AGENT_WORKER_STACK_BYTES)
         .build()?;
-    let term = console::Term::stdout();
 
     rt.block_on(async {
         let mut config = Config::load_or_init().await.map_err(|e| anyhow!("{e}"))?;
-        if let Some(m) = model { config.default_model = Some(m); }
-        if let Some(t) = temperature { config.default_temperature = t; }
-
         let mut agent = match Agent::from_config(&config) {
             Ok(a) => a,
             Err(e) => {
@@ -278,101 +276,17 @@ fn run_interactive_session(model: Option<String>, temperature: Option<f64>) -> R
 
         show_welcome();
 
-        loop {
-            let prompt = style("you").cyan().bold().to_string();
-            let input = read_line_raw(&term, &prompt);
-
-            let trimmed = input.trim().to_string();
-
-            if trimmed.is_empty() {
-                if let Some(cmd) = show_menu() {
-                    if !exec_cmd(cmd, "", &mut config, &mut agent, &rt).await { break; }
-                }
-                continue;
-            }
-
-            if trimmed.starts_with('/') {
-                let rest = trimmed[1..].trim().to_string();
-                if rest.is_empty() {
-                    if let Some(cmd) = show_menu() {
-                        if !exec_cmd(cmd, "", &mut config, &mut agent, &rt).await { break; }
-                    }
-                    continue;
-                }
-                let parts: Vec<&str> = rest.splitn(2, ' ').collect();
-                let cmd_name = parts[0];
-                let cmd_arg = parts.get(1).map(|s| *s).unwrap_or("");
-
-                if let Some(cmd) = Cmd::from_str(cmd_name) {
-                    if !exec_cmd(cmd, cmd_arg, &mut config, &mut agent, &rt).await { break; }
-                } else {
-                    // Try subcommands
-                    let sub = match cmd_name {
-                        "memory" | "mem" => {
-                            let sub_parts: Vec<&str> = cmd_arg.splitn(3, ' ').collect();
-                            match sub_parts.first().copied().unwrap_or("") {
-                                "list" | "ls" => Some(Cmd::MemoryList),
-                                "query" | "q" | "search" => Some(Cmd::MemoryQuery),
-                                "recall" | "rc" => Some(Cmd::MemoryRecall),
-                                _ => None,
-                            }
-                        }
-                        "config" | "cfg" | "settings" => {
-                            match cmd_arg {
-                                "model" | "models" => Some(Cmd::ConfigModel),
-                                "agent" => Some(Cmd::ConfigAgent),
-                                "paths" => Some(Cmd::ConfigPaths),
-                                _ => None,
-                            }
-                        }
-                        _ => None,
-                    };
-                    if let Some(cmd) = sub {
-                        let sub_arg = if cmd_name == "memory" || cmd_name == "mem" {
-                            let sub_parts: Vec<&str> = cmd_arg.splitn(3, ' ').collect();
-                            sub_parts.get(2).copied().unwrap_or("")
-                        } else {
-                            ""
-                        };
-                        if !exec_cmd(cmd, sub_arg, &mut config, &mut agent, &rt).await { break; }
-                    } else {
-                        let completions = Cmd::completions(cmd_name);
-                        if completions.is_empty() {
-                            eprintln!("  {}  Unknown command  {}.  Type  {}  for all commands.",
-                                style("?").yellow(), style(trimmed).bold(), style("/help").bold());
-                        } else {
-                            eprintln!("  {}  Unknown command  {}.  Did you mean:",
-                                style("?").yellow(), style(trimmed).bold());
-                            for c in &completions {
-                                eprintln!("      {}", style(format!("/{}", c)).cyan().bold());
-                            }
-                        }
-                    }
-                }
-                continue;
-            }
-
-            eprintln!("  {}  Thinking...", style("◐").dim());
-            match with_origin(AgentTurnOrigin::Cli, agent.run_single(&trimmed)).await {
-                Ok(response) => {
-                    let _ = term.clear_last_lines(1);
-                    if !response.trim().is_empty() {
-                        term.write_line("")?;
-                        term.write_str(&format!("  {}  ", style("▸").cyan().bold()))?;
-                        term.write_line(response.trim())?;
-                    }
-                    term.write_line("")?;
-                }
-                Err(e) => {
-                    let _ = term.clear_last_lines(1);
-                    eprintln!("  {}  Error: {}", style("✗").red().bold(), e);
-                }
-            }
-        }
+        // Launch TUI on a separate thread so the tokio runtime stays alive
+        let mut agent_for_tui = agent;
+        let mut config_for_tui = config;
+        std::thread::spawn(move || {
+            let _ = super::tui::run_tui(&mut agent_for_tui, &mut config_for_tui);
+        }).join().map_err(|_| anyhow!("TUI thread panicked"))?;
 
         eprintln!();
         eprintln!("  {}  Session ended.", style("●").dim());
         eprintln!();
+
         Ok::<_, anyhow::Error>(())
     })?;
     Ok(())

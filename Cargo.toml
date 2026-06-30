@@ -138,6 +138,8 @@ chrono-tz = "0.10"
 dialoguer = { version = "0.12", features = ["fuzzy-select"] }
 dotenvy = "0.15"
 console = "0.16"
+ratatui = "0.29"
+crossterm = "0.28"
 regex = "1.10"
 # Multi-pattern fixed-string DFA matcher used by `routing::quality` for
 # refusal/empty-noise detection on local-model responses. Already in the
