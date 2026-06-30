@@ -67,36 +67,43 @@ pub fn run_tui(tx_input: mpsc::Sender<String>, rx_resp: mpsc::Receiver<String>) 
     let tick = Duration::from_millis(50);
     let mut last_tick = Instant::now();
 
-    let res = loop {
-        terminal.draw(|f| render(f, &app))?;
+    // Run the event loop inside a closure so an error from draw/poll/read is
+    // captured into `res` rather than propagating out of `run_tui` and skipping
+    // the terminal teardown below — otherwise a failed frame would leave the
+    // user stuck in raw mode / the alternate screen.
+    let res: Result<()> = (|| {
+        loop {
+            terminal.draw(|f| render(f, &app))?;
 
-        // Check for agent responses (non-blocking)
-        if let Ok(response) = rx_resp.try_recv() {
-            app.msgs.push(ChatMsg { sender: "ai".into(), content: response });
-            app.thinking = false;
-        }
+            // Check for agent responses (non-blocking)
+            if let Ok(response) = rx_resp.try_recv() {
+                app.msgs.push(ChatMsg { sender: "ai".into(), content: response });
+                app.thinking = false;
+            }
 
-        let timeout = tick.saturating_sub(last_tick.elapsed());
-        if event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind != KeyEventKind::Press { continue; }
-                match handle_key(key, &mut app) {
-                    Action::Continue => {}
-                    Action::Quit => break Ok(()),
-                    Action::Send(msg) => {
-                        app.msgs.push(ChatMsg { sender: "you".into(), content: msg.clone() });
-                        app.thinking = true;
-                        let _ = tx_input.send(msg);
+            let timeout = tick.saturating_sub(last_tick.elapsed());
+            if event::poll(timeout)? {
+                if let Event::Key(key) = event::read()? {
+                    if key.kind != KeyEventKind::Press { continue; }
+                    match handle_key(key, &mut app) {
+                        Action::Continue => {}
+                        Action::Quit => return Ok(()),
+                        Action::Send(msg) => {
+                            app.msgs.push(ChatMsg { sender: "you".into(), content: msg.clone() });
+                            app.thinking = true;
+                            let _ = tx_input.send(msg);
+                        }
                     }
                 }
             }
+            if last_tick.elapsed() >= tick { last_tick = Instant::now(); }
         }
-        if last_tick.elapsed() >= tick { last_tick = Instant::now(); }
-    };
+    })();
 
+    // Always restore the terminal, even on error, before returning the outcome.
     let _ = crossterm::execute!(stdout(), crossterm::terminal::LeaveAlternateScreen);
-    crossterm::terminal::disable_raw_mode()?;
-    terminal.show_cursor()?;
+    let _ = crossterm::terminal::disable_raw_mode();
+    let _ = terminal.show_cursor();
     res
 }
 
@@ -270,7 +277,7 @@ fn render_input(f: &mut Frame, app: &App, area: Rect) {
     if !app.menu {
         let cx = inner.x + 1 + app.cursor as u16;
         let cy = inner.y;
-        f.set_cursor(cx.min(area.right().saturating_sub(1)), cy);
+        f.set_cursor_position((cx.min(area.right().saturating_sub(1)), cy));
     }
 }
 

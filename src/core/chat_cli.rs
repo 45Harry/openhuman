@@ -50,7 +50,7 @@ fn run_interactive_session() -> Result<()> {
     });
 
     rt.block_on(async {
-        let mut config = match Config::load_or_init().await {
+        let config = match Config::load_or_init().await {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("  {}  Config load failed: {}", style("✗").red().bold(), e);
@@ -81,7 +81,13 @@ fn run_interactive_session() -> Result<()> {
         }
     });
 
-    let _ = tui_thread.join();
+    // Surface TUI init/render/input failures instead of swallowing them — a
+    // dropped Result here made a broken terminal look like a clean exit.
+    match tui_thread.join() {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => eprintln!("  {}  TUI error: {}", style("✗").red().bold(), e),
+        Err(_) => eprintln!("  {}  TUI thread panicked", style("✗").red().bold()),
+    }
     eprintln!();
     eprintln!("  {}  Session ended.", style("●").dim());
     eprintln!();
