@@ -6,7 +6,7 @@ The OpenHuman CLI brings the full power of OpenHuman to your command line. Chat 
 
 ```bash
 npm install -g openhuman
-openhuman chat
+openhuman
 ```
 
 ## Install

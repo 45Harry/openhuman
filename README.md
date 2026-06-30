@@ -117,12 +117,12 @@ A separately signed script-install path is not currently available. Issue [#2620
 ```bash
 # Install via npm (any platform with Node.js 18+)
 npm install -g openhuman
-openhuman chat
+openhuman
 
 # Or via Homebrew (macOS)
 brew tap tinyhumansai/core
 brew install openhuman
-openhuman chat
+openhuman
 ```
 
 The CLI gives you the full OpenHuman agent in your terminal: chat, code, shell, git, web search, and memory — same capabilities as the desktop app. See [`packages/npm/README.md`](./packages/npm/README.md).
