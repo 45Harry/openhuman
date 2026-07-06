@@ -11,13 +11,13 @@ use crate::openhuman::config::rpc::load_and_apply_model_settings;
 use crate::openhuman::config::ops::ModelSettingsPatch;
 use crate::openhuman::config::Config;
 use crate::openhuman::credentials::ops::clear_session;
-use crate::openhuman::credentials::session_support::{build_session_state, get_session_token};
-use crate::openhuman::cost::{try_global, DailyCostEntry};
+use crate::openhuman::credentials::session_support::build_session_state;
+use crate::openhuman::cost::{try_global, CostTracker};
 use crate::openhuman::memory::ops::{
-    ai_list_memory_files, memory_list_documents, memory_list_namespaces,
+    ai_list_memory_files, memory_list_namespaces,
 };
 use crate::openhuman::memory::rpc_models::{
-    EmptyRequest, ListDocumentsRequest, ListMemoryFilesRequest,
+    EmptyRequest, ListMemoryFilesRequest,
 };
 use crate::openhuman::memory_conversations::list_threads;
 use crate::core::tui::AgentCmd;
@@ -268,9 +268,12 @@ fn format_config(config: &Config) -> String {
     lines.join("\n")
 }
 
-async fn handle_usage(_config: &Config) -> String {
-    match try_global() {
-        Some(tracker) => match tracker.get_daily_history(7) {
+async fn handle_usage(config: &Config) -> String {
+    let tracker = try_global().or_else(|| {
+        CostTracker::new(config.cost.clone(), &config.workspace_dir).ok().map(std::sync::Arc::new)
+    });
+    match tracker {
+        Some(t) => match t.get_daily_history(7) {
             Ok(entries) => {
                 if entries.is_empty() {
                     return "No usage data recorded yet.".into();
