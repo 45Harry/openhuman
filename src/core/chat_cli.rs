@@ -7,11 +7,19 @@ use console::style;
 
 use crate::openhuman::agent::turn_origin::{AgentTurnOrigin, with_origin};
 use crate::openhuman::agent::Agent;
-use crate::openhuman::credentials::ops::clear_session;
-use crate::openhuman::credentials::session_support::get_session_token;
 use crate::openhuman::config::rpc::load_and_apply_model_settings;
 use crate::openhuman::config::ops::ModelSettingsPatch;
 use crate::openhuman::config::Config;
+use crate::openhuman::credentials::ops::clear_session;
+use crate::openhuman::credentials::session_support::{build_session_state, get_session_token};
+use crate::openhuman::cost::{try_global, DailyCostEntry};
+use crate::openhuman::memory::ops::{
+    ai_list_memory_files, memory_list_documents, memory_list_namespaces,
+};
+use crate::openhuman::memory::rpc_models::{
+    EmptyRequest, ListDocumentsRequest, ListMemoryFilesRequest,
+};
+use crate::openhuman::memory_conversations::list_threads;
 use crate::core::tui::AgentCmd;
 
 pub fn run_chat_command(args: &[String]) -> Result<()> {
@@ -60,10 +68,16 @@ fn run_interactive_session() -> Result<()> {
     rt.block_on(async {
         loop {
             if let Ok(msg) = rx_input.try_recv() {
-                if msg == "/exit" || msg == "/quit" { break; }
+                if msg == "/exit" || msg == "/quit" {
+                    break;
+                }
                 match with_origin(AgentTurnOrigin::Cli, agent.run_single(&msg)).await {
-                    Ok(response) => { let _ = tx_resp.send(response); }
-                    Err(e) => { let _ = tx_resp.send(format!("Error: {}", e)); }
+                    Ok(response) => {
+                        let _ = tx_resp.send(response);
+                    }
+                    Err(e) => {
+                        let _ = tx_resp.send(format!("Error: {e}"));
+                    }
                 }
             }
             if let Ok(cmd) = rx_cmd.try_recv() {
@@ -91,11 +105,11 @@ async fn handle_cmd(cmd: AgentCmd, config: &mut Config, agent: &mut Agent) -> St
         AgentCmd::Login => handle_login().await,
         AgentCmd::Logout => handle_logout(config).await,
         AgentCmd::Status => format_status(config),
-        AgentCmd::ListThreads => handle_list_threads().await,
+        AgentCmd::ListThreads => handle_list_threads(config).await,
         AgentCmd::ListMemory => handle_list_memory().await,
         AgentCmd::ListFiles => handle_list_files().await,
         AgentCmd::ShowConfig => format_config(config),
-        AgentCmd::ShowUsage => "Usage tracking not available in this mode.".into(),
+        AgentCmd::ShowUsage => handle_usage(config).await,
         AgentCmd::ListTools => list_agent_tools(agent),
     }
 }
@@ -122,7 +136,7 @@ async fn handle_switch_model(config: &mut Config, agent: &mut Agent, name: Strin
 }
 
 async fn handle_login() -> String {
-    "To log in, get your API token from the OpenHuman app and run:\n  openhuman login <token>".into()
+    "To log in, get your API token from the OpenHuman app and run:\n  openhuman login <token>\n\nOr set OPENHUMAN_API_KEY in your environment.".into()
 }
 
 async fn handle_logout(config: &mut Config) -> String {
@@ -138,25 +152,91 @@ fn format_status(config: &Config) -> String {
     if let Some(model) = &config.default_model {
         lines.push(format!("Model: {model}"));
     }
-    match get_session_token(config) {
-        Ok(Some(_)) => lines.push("Auth: logged in".into()),
-        Ok(None) => lines.push("Auth: not logged in".into()),
+    match build_session_state(config) {
+        Ok(state) => {
+            if state.is_authenticated {
+                lines.push("Auth: logged in".into());
+            } else {
+                lines.push("Auth: not logged in".into());
+            }
+        }
         Err(_) => lines.push("Auth: unknown".into()),
     }
+    lines.push(format!("Workspace: {}", config.workspace_dir.display()));
     lines.push(format!("Action dir: {}", config.action_dir.display()));
     lines.join("\n")
 }
 
-async fn handle_list_threads() -> String {
-    "Thread listing not available in CLI mode. Use the OpenHuman desktop app.".into()
+async fn handle_list_threads(config: &Config) -> String {
+    let workspace = config.workspace_dir.clone();
+    match tokio::task::spawn_blocking(move || list_threads(workspace)).await {
+        Ok(Ok(threads)) => {
+            if threads.is_empty() {
+                return "No conversation threads found.".into();
+            }
+            let mut lines = Vec::new();
+            lines.push(format!("── Threads ({}) ──", threads.len()));
+            for t in &threads {
+                let title = if t.title.is_empty() {
+                    "(untitled)".to_string()
+                } else {
+                    t.title.clone()
+                };
+                lines.push(format!("  {:<38} {} msgs", title, t.message_count));
+            }
+            lines.join("\n")
+        }
+        Ok(Err(e)) => format!("Failed to list threads: {e}"),
+        Err(e) => format!("Thread listing failed: {e}"),
+    }
 }
 
 async fn handle_list_memory() -> String {
-    "Memory browsing not available in CLI mode. Use the OpenHuman desktop app.".into()
+    match memory_list_namespaces(EmptyRequest {}).await {
+        Ok(outcome) => {
+            let envelope = outcome.value;
+            if let Some(data) = envelope.data {
+                if data.namespaces.is_empty() {
+                    return "No memory namespaces found.".into();
+                }
+                let mut lines = Vec::new();
+                lines.push(format!("── Memory namespaces ({}) ──", data.count));
+                for ns in &data.namespaces {
+                    lines.push(format!("  {ns}"));
+                }
+                lines.join("\n")
+            } else {
+                "Memory system not available.".into()
+            }
+        }
+        Err(e) => format!("Memory listing failed: {e}"),
+    }
 }
 
 async fn handle_list_files() -> String {
-    "File listing not available in CLI mode. Use the OpenHuman desktop app.".into()
+    match ai_list_memory_files(ListMemoryFilesRequest {
+        relative_dir: ".".into(),
+    })
+    .await
+    {
+        Ok(outcome) => {
+            let envelope = outcome.value;
+            if let Some(data) = envelope.data {
+                if data.files.is_empty() {
+                    return "No memory files found.".into();
+                }
+                let mut lines = Vec::new();
+                lines.push(format!("── Memory files ({}) ──", data.count));
+                for f in &data.files {
+                    lines.push(format!("  {f}"));
+                }
+                lines.join("\n")
+            } else {
+                "No memory files found.".into()
+            }
+        }
+        Err(e) => format!("File listing failed: {e}"),
+    }
 }
 
 fn format_config(config: &Config) -> String {
@@ -164,10 +244,56 @@ fn format_config(config: &Config) -> String {
     lines.push("── Config ──".into());
     lines.push(format!("Workspace: {}", config.workspace_dir.display()));
     lines.push(format!("Action dir: {}", config.action_dir.display()));
-    lines.push(format!("Default model: {}", config.default_model.as_deref().unwrap_or("not set")));
-    lines.push(format!("API URL: {}", config.api_url.as_deref().unwrap_or("default")));
-    lines.push(format!("Inference URL: {}", config.inference_url.as_deref().unwrap_or("default")));
+    lines.push(format!(
+        "Default model: {}",
+        config.default_model.as_deref().unwrap_or("not set")
+    ));
+    lines.push(format!(
+        "API URL: {}",
+        config.api_url.as_deref().unwrap_or("default")
+    ));
+    lines.push(format!(
+        "Inference URL: {}",
+        config.inference_url.as_deref().unwrap_or("default")
+    ));
+    lines.push(format!(
+        "Temperature: {}",
+        config.default_temperature
+    ));
+    lines.push(format!(
+        "Output language: {}",
+        config.output_language.as_deref().unwrap_or("default")
+    ));
+    lines.push(format!("Schema version: {}", config.schema_version));
     lines.join("\n")
+}
+
+async fn handle_usage(_config: &Config) -> String {
+    match try_global() {
+        Some(tracker) => match tracker.get_daily_history(7) {
+            Ok(entries) => {
+                if entries.is_empty() {
+                    return "No usage data recorded yet.".into();
+                }
+                let total_cost: f64 = entries.iter().map(|e| e.cost_usd).sum();
+                let total_tokens: u64 = entries.iter().map(|e| e.total_tokens).sum();
+                let mut lines = Vec::new();
+                lines.push(format!(
+                    "── Usage (last 7 days) ──  ${:.4}  {} tokens",
+                    total_cost, total_tokens
+                ));
+                for entry in &entries {
+                    lines.push(format!(
+                        "  {}  ${:.4}  {}i/{}o tokens",
+                        entry.date, entry.cost_usd, entry.input_tokens, entry.output_tokens
+                    ));
+                }
+                lines.join("\n")
+            }
+            Err(e) => format!("Usage query failed: {e}"),
+        },
+        None => "Usage tracking not initialized.".into(),
+    }
 }
 
 fn list_agent_tools(agent: &Agent) -> String {
