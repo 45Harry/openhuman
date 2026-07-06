@@ -1,5 +1,3 @@
-//! Full-screen TUI for `openhuman chat`.
-
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -20,15 +18,9 @@ const BORDER: Color = Color::Rgb(40, 40, 55);
 
 pub enum AgentCmd {
     SwitchModel(String),
-    Login,
-    Logout,
-    Status,
-    ListThreads,
-    ListMemory,
-    ListFiles,
-    ShowConfig,
-    ShowUsage,
-    ListTools,
+    Login, Logout, Status,
+    ListThreads, ListMemory, ListFiles,
+    ShowConfig, ShowUsage, ListTools,
 }
 
 struct ChatMsg {
@@ -46,11 +38,14 @@ struct App {
     model_popup: bool,
     model_idx: usize,
     models: Vec<String>,
+    scroll_offset: usize,
+    model_name: String,
 }
 
 const CMDS: &[(&str, &str)] = &[
     ("help", "Show available commands"),
     ("model", "Switch AI model"),
+    ("new", "Start new conversation"),
     ("login", "Authenticate with API token"),
     ("logout", "Clear saved credentials"),
     ("status", "Show auth status & current config"),
@@ -100,6 +95,8 @@ pub fn run_tui(
         model_popup: false,
         model_idx: 0,
         models: MODELS.iter().map(|s| s.to_string()).collect(),
+        scroll_offset: 0,
+        model_name: "unknown".into(),
     };
 
     let tick = Duration::from_millis(50);
@@ -110,7 +107,11 @@ pub fn run_tui(
             terminal.draw(|f| render(f, &app))?;
 
             if let Ok(response) = rx_resp.try_recv() {
-                app.msgs.push(ChatMsg { sender: "ai".into(), content: response });
+                app.msgs.push(ChatMsg { sender: "ai".into(), content: response.clone() });
+                if let Some(name) = response.strip_prefix("Switched to model: ") {
+                    app.model_name = name.to_string();
+                }
+                app.scroll_offset = 0;
                 app.thinking = false;
             }
 
@@ -123,6 +124,7 @@ pub fn run_tui(
                         Action::Quit => return Ok(()),
                         Action::Send(msg) => {
                             app.msgs.push(ChatMsg { sender: "you".into(), content: msg.clone() });
+                            app.scroll_offset = 0;
                             app.thinking = true;
                             let _ = tx_input.send(msg);
                         }
@@ -140,9 +142,7 @@ pub fn run_tui(
 }
 
 enum Action {
-    Continue,
-    Quit,
-    Send(String),
+    Continue, Quit, Send(String),
 }
 
 fn handle_key(
@@ -196,6 +196,22 @@ fn handle_key(
             app.menu_idx = 0;
             Action::Continue
         }
+        KeyCode::Up if app.input.is_empty() => {
+            app.scroll_offset = app.scroll_offset.saturating_add(1);
+            Action::Continue
+        }
+        KeyCode::Down if app.input.is_empty() => {
+            app.scroll_offset = app.scroll_offset.saturating_sub(1);
+            Action::Continue
+        }
+        KeyCode::PageUp => {
+            app.scroll_offset = app.scroll_offset.saturating_add(10);
+            Action::Continue
+        }
+        KeyCode::PageDown => {
+            app.scroll_offset = app.scroll_offset.saturating_sub(10);
+            Action::Continue
+        }
         KeyCode::Char(c) => {
             app.input.insert(app.cursor, c);
             app.cursor += c.len_utf8();
@@ -234,6 +250,11 @@ fn handle_key(
                 app.model_idx = 0;
                 return Action::Continue;
             }
+            if text == "/new" {
+                app.msgs.clear();
+                app.scroll_offset = 0;
+                return Action::Continue;
+            }
             if text.starts_with('/') {
                 let cmd = text.trim_start_matches('/').trim_start().to_string();
                 let sent = match cmd.as_str() {
@@ -254,9 +275,7 @@ fn handle_key(
                         false
                     }
                 };
-                if sent {
-                    app.thinking = true;
-                }
+                if sent { app.thinking = true; }
                 return Action::Continue;
             }
             Action::Send(text)
@@ -288,12 +307,18 @@ fn render(f: &mut Frame, app: &App) {
     let area = f.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(7), Constraint::Fill(1), Constraint::Length(3)])
+        .constraints([
+            Constraint::Length(5),
+            Constraint::Fill(1),
+            Constraint::Length(1),
+            Constraint::Length(3),
+        ])
         .split(area);
 
     render_logo(f, chunks[0]);
     render_msgs(f, app, chunks[1]);
-    render_input(f, app, chunks[2]);
+    render_status(f, app, chunks[2]);
+    render_input(f, app, chunks[3]);
 
     if app.menu { render_menu_popup(f, app, chunks[1]); }
     if app.model_popup { render_model_popup(f, app, chunks[1]); }
@@ -312,12 +337,7 @@ fn logo_lines() -> Vec<Line<'static>> {
 }
 
 fn render_logo(f: &mut Frame, area: Rect) {
-    let mut lines = logo_lines();
-    lines.push(Line::from(Span::styled(
-        "  chat  code  shell  git  memory  —  terminal AI assistant",
-        Style::default().fg(Color::DarkGray),
-    )));
-    let para = Paragraph::new(Text::from(lines))
+    let para = Paragraph::new(Text::from(logo_lines()))
         .style(Style::default().bg(DARK_BG))
         .block(Block::default().style(Style::default().bg(DARK_BG)));
     f.render_widget(para, area);
@@ -331,17 +351,49 @@ fn render_msgs(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let start = app.msgs.len().saturating_sub(inner.height as usize);
-    let items: Vec<ListItem> = app.msgs[start..].iter().map(|m| {
+    let items = msgs_to_items(app);
+    let visible_count = inner.height as usize;
+    let total = items.len();
+    if total == 0 { return; }
+
+    let max_offset = total.saturating_sub(visible_count);
+    let offset = app.scroll_offset.min(max_offset);
+    let start = total.saturating_sub(visible_count + offset);
+
+    let end = (start + visible_count).min(total);
+    let visible: Vec<ListItem> = items[start..end].to_vec();
+    f.render_widget(List::new(visible).style(Style::default().bg(DARK_BG)), inner);
+}
+
+fn msgs_to_items(app: &App) -> Vec<ListItem<'static>> {
+    let mut items = Vec::new();
+    for m in &app.msgs {
         let tag = match m.sender.as_str() {
             "you" => ansi_str("you", CYAN),
             "ai" | "assistant" => ansi_str("ai", Color::Green),
+            "system" => ansi_str("sys", Color::Gray),
             _ => ansi_str(&m.sender, Color::Gray),
         };
-        ListItem::new(Text::raw(format!(" {} {}", tag, m.content)))
-            .style(Style::default().bg(DARK_BG))
-    }).collect();
-    f.render_widget(List::new(items).style(Style::default().bg(DARK_BG)), inner);
+        let mut first = true;
+        for line in m.content.split('\n') {
+            let text = if first {
+                format!(" {} {}", tag, line)
+            } else {
+                format!("   {}", line)
+            };
+            items.push(ListItem::new(Text::raw(text)).style(Style::default().bg(DARK_BG)));
+            first = false;
+        }
+    }
+    items
+}
+
+fn render_status(f: &mut Frame, app: &App, area: Rect) {
+    let msg = format!(" {}  Model: {}  |  Ctrl+C to quit  |  /  for menu ", 
+        ansi_str("●", Color::Green), app.model_name);
+    let para = Paragraph::new(Text::raw(msg))
+        .style(Style::default().bg(SURFACE).fg(Color::DarkGray));
+    f.render_widget(para, area);
 }
 
 fn render_input(f: &mut Frame, app: &App, area: Rect) {
