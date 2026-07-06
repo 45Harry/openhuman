@@ -20,6 +20,15 @@ const BORDER: Color = Color::Rgb(40, 40, 55);
 
 pub enum AgentCmd {
     SwitchModel(String),
+    Login,
+    Logout,
+    Status,
+    ListThreads,
+    ListMemory,
+    ListFiles,
+    ShowConfig,
+    ShowUsage,
+    ListTools,
 }
 
 struct ChatMsg {
@@ -42,7 +51,16 @@ struct App {
 const CMDS: &[(&str, &str)] = &[
     ("help", "Show available commands"),
     ("model", "Switch AI model"),
-    ("exit", "Quit"),
+    ("login", "Authenticate with API token"),
+    ("logout", "Clear saved credentials"),
+    ("status", "Show auth status & current config"),
+    ("threads", "List conversation threads"),
+    ("memory", "Browse AI memory"),
+    ("files", "View attached files"),
+    ("config", "Show current configuration"),
+    ("usage", "Display token usage"),
+    ("tools", "List available tools"),
+    ("exit", "Quit openhuman"),
 ];
 
 const MODELS: &[&str] = &[
@@ -217,11 +235,28 @@ fn handle_key(
                 return Action::Continue;
             }
             if text.starts_with('/') {
-                let name = text.trim_start_matches('/');
-                app.msgs.push(ChatMsg {
-                    sender: "system".into(),
-                    content: format!("Unknown command /{name}. Try /help."),
-                });
+                let cmd = text.trim_start_matches('/').trim_start().to_string();
+                let sent = match cmd.as_str() {
+                    "login" => { let _ = tx_cmd.send(AgentCmd::Login); true }
+                    "logout" => { let _ = tx_cmd.send(AgentCmd::Logout); true }
+                    "status" => { let _ = tx_cmd.send(AgentCmd::Status); true }
+                    "threads" => { let _ = tx_cmd.send(AgentCmd::ListThreads); true }
+                    "memory" => { let _ = tx_cmd.send(AgentCmd::ListMemory); true }
+                    "files" => { let _ = tx_cmd.send(AgentCmd::ListFiles); true }
+                    "config" => { let _ = tx_cmd.send(AgentCmd::ShowConfig); true }
+                    "usage" => { let _ = tx_cmd.send(AgentCmd::ShowUsage); true }
+                    "tools" => { let _ = tx_cmd.send(AgentCmd::ListTools); true }
+                    other => {
+                        app.msgs.push(ChatMsg {
+                            sender: "system".into(),
+                            content: format!("Unknown command /{other}. Try /help."),
+                        });
+                        false
+                    }
+                };
+                if sent {
+                    app.thinking = true;
+                }
                 return Action::Continue;
             }
             Action::Send(text)

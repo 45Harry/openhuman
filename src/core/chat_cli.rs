@@ -7,6 +7,8 @@ use console::style;
 
 use crate::openhuman::agent::turn_origin::{AgentTurnOrigin, with_origin};
 use crate::openhuman::agent::Agent;
+use crate::openhuman::credentials::ops::clear_session;
+use crate::openhuman::credentials::session_support::get_session_token;
 use crate::openhuman::config::rpc::load_and_apply_model_settings;
 use crate::openhuman::config::ops::ModelSettingsPatch;
 use crate::openhuman::config::Config;
@@ -57,7 +59,6 @@ fn run_interactive_session() -> Result<()> {
 
     rt.block_on(async {
         loop {
-            // Check both channels
             if let Ok(msg) = rx_input.try_recv() {
                 if msg == "/exit" || msg == "/quit" { break; }
                 match with_origin(AgentTurnOrigin::Cli, agent.run_single(&msg)).await {
@@ -66,29 +67,8 @@ fn run_interactive_session() -> Result<()> {
                 }
             }
             if let Ok(cmd) = rx_cmd.try_recv() {
-                match cmd {
-                    AgentCmd::SwitchModel(name) => {
-                        match load_and_apply_model_settings(ModelSettingsPatch {
-                            default_model: Some(name.clone()), ..Default::default()
-                        }).await {
-                            Ok(_) => {
-                                config.default_model = Some(name.clone());
-                                match Agent::from_config(&config) {
-                                    Ok(a) => {
-                                        agent = a;
-                                        let _ = tx_resp.send(format!("Switched to model: {}", name));
-                                    }
-                                    Err(e) => {
-                                        let _ = tx_resp.send(format!("Model switch failed: {}", e));
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                let _ = tx_resp.send(format!("Model switch failed: {}", e));
-                            }
-                        }
-                    }
-                }
+                let response = handle_cmd(cmd, &mut config, &mut agent).await;
+                let _ = tx_resp.send(response);
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
@@ -103,4 +83,102 @@ fn run_interactive_session() -> Result<()> {
     eprintln!("  {}  Session ended.", style("●").dim());
     eprintln!();
     Ok(())
+}
+
+async fn handle_cmd(cmd: AgentCmd, config: &mut Config, agent: &mut Agent) -> String {
+    match cmd {
+        AgentCmd::SwitchModel(name) => handle_switch_model(config, agent, name).await,
+        AgentCmd::Login => handle_login().await,
+        AgentCmd::Logout => handle_logout(config).await,
+        AgentCmd::Status => format_status(config),
+        AgentCmd::ListThreads => handle_list_threads().await,
+        AgentCmd::ListMemory => handle_list_memory().await,
+        AgentCmd::ListFiles => handle_list_files().await,
+        AgentCmd::ShowConfig => format_config(config),
+        AgentCmd::ShowUsage => "Usage tracking not available in this mode.".into(),
+        AgentCmd::ListTools => list_agent_tools(agent),
+    }
+}
+
+async fn handle_switch_model(config: &mut Config, agent: &mut Agent, name: String) -> String {
+    match load_and_apply_model_settings(ModelSettingsPatch {
+        default_model: Some(name.clone()),
+        ..Default::default()
+    })
+    .await
+    {
+        Ok(_) => {
+            config.default_model = Some(name.clone());
+            match Agent::from_config(config) {
+                Ok(a) => {
+                    *agent = a;
+                    format!("Switched to model: {name}")
+                }
+                Err(e) => format!("Model switch failed: {e}"),
+            }
+        }
+        Err(e) => format!("Model switch failed: {e}"),
+    }
+}
+
+async fn handle_login() -> String {
+    "To log in, get your API token from the OpenHuman app and run:\n  openhuman login <token>".into()
+}
+
+async fn handle_logout(config: &mut Config) -> String {
+    match clear_session(config).await {
+        Ok(_) => "Logged out. Session cleared.".into(),
+        Err(e) => format!("Logout failed: {e}"),
+    }
+}
+
+fn format_status(config: &Config) -> String {
+    let mut lines = Vec::new();
+    lines.push("── Status ──".into());
+    if let Some(model) = &config.default_model {
+        lines.push(format!("Model: {model}"));
+    }
+    match get_session_token(config) {
+        Ok(Some(_)) => lines.push("Auth: logged in".into()),
+        Ok(None) => lines.push("Auth: not logged in".into()),
+        Err(_) => lines.push("Auth: unknown".into()),
+    }
+    lines.push(format!("Action dir: {}", config.action_dir.display()));
+    lines.join("\n")
+}
+
+async fn handle_list_threads() -> String {
+    "Thread listing not available in CLI mode. Use the OpenHuman desktop app.".into()
+}
+
+async fn handle_list_memory() -> String {
+    "Memory browsing not available in CLI mode. Use the OpenHuman desktop app.".into()
+}
+
+async fn handle_list_files() -> String {
+    "File listing not available in CLI mode. Use the OpenHuman desktop app.".into()
+}
+
+fn format_config(config: &Config) -> String {
+    let mut lines = Vec::new();
+    lines.push("── Config ──".into());
+    lines.push(format!("Workspace: {}", config.workspace_dir.display()));
+    lines.push(format!("Action dir: {}", config.action_dir.display()));
+    lines.push(format!("Default model: {}", config.default_model.as_deref().unwrap_or("not set")));
+    lines.push(format!("API URL: {}", config.api_url.as_deref().unwrap_or("default")));
+    lines.push(format!("Inference URL: {}", config.inference_url.as_deref().unwrap_or("default")));
+    lines.join("\n")
+}
+
+fn list_agent_tools(agent: &Agent) -> String {
+    let tools = agent.tools();
+    if tools.is_empty() {
+        return "No tools available.".into();
+    }
+    let mut lines = Vec::new();
+    lines.push(format!("── Tools ({}) ──", tools.len()));
+    for tool in tools {
+        lines.push(format!("  {:<20} {}", tool.name(), tool.description()));
+    }
+    lines.join("\n")
 }
