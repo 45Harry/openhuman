@@ -66,6 +66,7 @@ pub fn run_tui(
     tx_input: mpsc::Sender<String>,
     tx_cmd: mpsc::Sender<AgentCmd>,
     rx_resp: mpsc::Receiver<String>,
+    initial_model: &str,
 ) -> Result<()> {
     use ratatui::backend::CrosstermBackend;
     use ratatui::Terminal;
@@ -96,7 +97,7 @@ pub fn run_tui(
         model_idx: 0,
         models: MODELS.iter().map(|s| s.to_string()).collect(),
         scroll_offset: 0,
-        model_name: "unknown".into(),
+        model_name: initial_model.into(),
     };
 
     let tick = Duration::from_millis(50);

@@ -65,7 +65,8 @@ fn run_interactive_session() -> Result<()> {
     let (tx_cmd, rx_cmd) = mpsc::channel::<AgentCmd>();
     let (tx_resp, rx_resp) = mpsc::channel::<String>();
 
-    let tui_thread = std::thread::spawn(move || super::tui::run_tui(tx_input, tx_cmd, rx_resp));
+    let initial_model = config.default_model.clone().unwrap_or_else(|| "unknown".into());
+    let tui_thread = std::thread::spawn(move || super::tui::run_tui(tx_input, tx_cmd, rx_resp, &initial_model));
 
     rt.block_on(async {
         loop {
