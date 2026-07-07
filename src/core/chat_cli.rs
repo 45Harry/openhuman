@@ -56,6 +56,8 @@ fn run_interactive_session() -> Result<()> {
     let mut config = rt
         .block_on(Config::load_or_init())
         .map_err(|e| anyhow!("config load failed: {e}"))?;
+    config.action_dir = std::env::current_dir()
+        .map_err(|e| anyhow!("failed to get cwd: {e}"))?;
     let mut agent = Agent::from_config(&config)
         .map_err(|e| anyhow!("agent init failed ({e}); run `openhuman login` first"))?;
 
