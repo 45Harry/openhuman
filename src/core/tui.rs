@@ -17,6 +17,7 @@ const SURFACE: Color = Color::Rgb(18, 18, 26);
 const BORDER: Color = Color::Rgb(40, 40, 55);
 
 pub enum AgentCmd {
+    NewConversation,
     SwitchModel(String),
     Login,
     Logout,
@@ -314,6 +315,7 @@ fn handle_key(
             if text == "/new" {
                 app.msgs.clear();
                 app.scroll_offset = 0;
+                let _ = tx_cmd.send(AgentCmd::NewConversation);
                 return Action::Continue;
             }
             if text.starts_with('/') {

@@ -78,31 +78,46 @@ fn run_interactive_session() -> Result<()> {
 
     rt.block_on(async {
         loop {
-            if let Ok(msg) = rx_input.try_recv() {
-                if msg == "/exit" || msg == "/quit" {
-                    break;
-                }
-                match agent.as_mut() {
-                    Some(active_agent) => {
-                        match with_origin(AgentTurnOrigin::Cli, active_agent.run_single(&msg)).await
-                        {
-                            Ok(response) => {
-                                let _ = tx_resp.send(response);
-                            }
-                            Err(e) => {
-                                log::debug!("[chat_cli] agent turn failed: {e}");
-                                let _ = tx_resp.send(format!("Error: {e}"));
+            match rx_input.try_recv() {
+                Ok(msg) => {
+                    if msg == "/exit" || msg == "/quit" {
+                        break;
+                    }
+                    match agent.as_mut() {
+                        Some(active_agent) => {
+                            match with_origin(AgentTurnOrigin::Cli, active_agent.run_single(&msg))
+                                .await
+                            {
+                                Ok(response) => {
+                                    let _ = tx_resp.send(response);
+                                }
+                                Err(e) => {
+                                    log::debug!("[chat_cli] agent turn failed: {e}");
+                                    let _ = tx_resp.send(format!("Error: {e}"));
+                                }
                             }
                         }
-                    }
-                    None => {
-                        let _ = tx_resp.send(agent_not_ready_message());
+                        None => {
+                            let _ = tx_resp.send(agent_not_ready_message());
+                        }
                     }
                 }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    log::debug!("[chat_cli] TUI input channel disconnected; ending session");
+                    break;
+                }
             }
-            if let Ok(cmd) = rx_cmd.try_recv() {
-                let response = handle_cmd(cmd, &mut config, &mut agent).await;
-                let _ = tx_resp.send(response);
+            match rx_cmd.try_recv() {
+                Ok(cmd) => {
+                    let response = handle_cmd(cmd, &mut config, &mut agent).await;
+                    let _ = tx_resp.send(response);
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    log::debug!("[chat_cli] TUI command channel disconnected; ending session");
+                    break;
+                }
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
@@ -121,6 +136,7 @@ fn run_interactive_session() -> Result<()> {
 
 async fn handle_cmd(cmd: AgentCmd, config: &mut Config, agent: &mut Option<Agent>) -> String {
     match cmd {
+        AgentCmd::NewConversation => handle_new_conversation(config, agent),
         AgentCmd::SwitchModel(name) => handle_switch_model(config, agent, name).await,
         AgentCmd::Login => handle_login(config, agent).await,
         AgentCmd::Logout => handle_logout(config, agent).await,
@@ -134,6 +150,20 @@ async fn handle_cmd(cmd: AgentCmd, config: &mut Config, agent: &mut Option<Agent
             Some(active_agent) => list_agent_tools(active_agent),
             None => agent_not_ready_message(),
         },
+    }
+}
+
+fn handle_new_conversation(config: &Config, agent: &mut Option<Agent>) -> String {
+    match Agent::from_config(config) {
+        Ok(rebuilt) => {
+            *agent = Some(rebuilt);
+            "Started a new conversation.".into()
+        }
+        Err(e) => {
+            log::debug!("[chat_cli] agent rebuild for new conversation failed: {e}");
+            *agent = None;
+            format!("Started a new conversation, but the agent is not ready.\n\nLast error: {e}")
+        }
     }
 }
 
