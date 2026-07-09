@@ -1,17 +1,15 @@
 {
   "name": "openhuman",
-  "version": "0.58.2",
-  "description": "OpenHuman CLI — AI coding assistant for the terminal. Chat, code, and automate with your personal AI.",
+  "version": "0.0.0",
+  "description": "AI-powered assistant for communities — OpenHuman CLI",
   "keywords": [
     "openhuman",
     "ai",
     "cli",
-    "coding",
-    "assistant",
-    "agent",
-    "terminal"
+    "crypto",
+    "community"
   ],
-  "homepage": "https://tinyhumans.ai/openhuman",
+  "homepage": "https://github.com/tinyhumansai/openhuman",
   "repository": {
     "type": "git",
     "url": "https://github.com/tinyhumansai/openhuman.git",

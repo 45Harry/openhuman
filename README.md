@@ -59,21 +59,6 @@ Download installers from [tinyhumans.ai/openhuman](https://tinyhumans.ai/openhum
 
 For terminal installs (Homebrew, Debian/Ubuntu `.deb`, AUR, install scripts, and platform notes), see **[INSTALL.md](./INSTALL.md)**.
 
-## Quick start — CLI (interactive coding assistant)
-
-```bash
-# Install via npm (any platform with Node.js 18+)
-npm install -g openhuman
-openhuman
-
-# Or via Homebrew (macOS)
-brew tap tinyhumansai/core
-brew install openhuman
-openhuman
-```
-
-The CLI gives you the full OpenHuman agent in your terminal: chat, code, shell, git, web search, and memory — same capabilities as the desktop app. See [`packages/npm/README.md`](./packages/npm/README.md).
-
 # What is OpenHuman?
 
 OpenHuman is three things most assistants aren't: **a brain** that builds a persistent, local memory of your world; **a fantastic orchestrator** that runs fleets of agents on durable graphs; and **a deep researcher** that sweeps your data and the web before you finish asking. Every bullet links to the deeper writeup in the [docs](https://tinyhumans.gitbook.io/openhuman/).
