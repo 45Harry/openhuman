@@ -20,6 +20,8 @@
 //! event visibility, and no-double-retry) against the crate loop. Until then this
 //! wrapper stays authoritative for single-attempt retry on the live path.
 
+#[cfg(test)]
+use super::traits::StreamError;
 use super::traits::{
     ChatMessage, ChatRequest, ChatResponse, StreamChunk, StreamOptions, StreamResult,
 };
