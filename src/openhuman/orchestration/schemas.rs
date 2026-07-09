@@ -1,9 +1,9 @@
-//! JSON-RPC read surface for the orchestration layer (stage 7).
+//! JSON-RPC read surface for the orchestration layer.
 //!
 //! Renderer-only controllers (internal registry — never advertised to agents):
-//! the `TinyPlaceOrchestrationTab` reads sessions + messages from the stage-3
-//! store's real classification here instead of client-side heuristics, sends
-//! Master steering DMs, and marks chats read. Namespace: `orchestration`; methods
+//! the `TinyPlaceOrchestrationTab` reads sessions + messages from the local
+//! render cache (kept in sync with the hosted brain by `sync`), sends Master
+//! steering DMs, and marks chats read. Namespace: `orchestration`; methods
 //! `openhuman.orchestration_*`.
 
 use serde::Serialize;
@@ -14,6 +14,7 @@ use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
 use crate::openhuman::config::{rpc as config_rpc, Config};
 
 use super::attention;
+use super::presence;
 use super::store;
 use super::types::{
     ChatKind, OrchestrationMessage, OrchestrationSession, SessionEnvelopeV1, LOCAL_MASTER_AGENT,
@@ -210,6 +211,15 @@ struct SessionSummary {
     message_count: i64,
     active: bool,
     pinned: bool,
+    /// Live peer reachability from the in-memory presence map (`presence.rs`).
+    /// `Some(true)` = confidently online (heard from within the TTL);
+    /// `Some(false)` = confidently offline (heartbeat, once landed); `None` =
+    /// unknown → the UI falls back to the recency-based `active`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    peer_online: Option<bool>,
+    /// ISO-8601 last time we heard from this peer, if ever.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_seen_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -235,6 +245,9 @@ struct OrchestrationStatus {
     /// Most recent orchestration error, if any (short cause string, never a body).
     #[serde(skip_serializing_if = "Option::is_none")]
     last_error: Option<String>,
+    /// Whether the hosted brain was reachable at the last health probe. Drives
+    /// the "cloud brain unreachable" offline notice in the renderer.
+    cloud_reachable: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -342,6 +355,16 @@ fn summarize(
     let active = pinned || is_active(&session.last_message_at);
     let harness_type = harness_type_for(&session.source);
     let status = derive_status(session.status_state.as_deref(), active).to_string();
+    // Overlay live peer presence for real peer sessions only (the pinned
+    // master/subconscious windows have no remote peer).
+    let (peer_online, last_seen_at) = if pinned {
+        (None, None)
+    } else {
+        (
+            presence::is_online(&session.agent_id),
+            presence::last_seen_iso(&session.agent_id),
+        )
+    };
     SessionSummary {
         chat_kind: chat_kind.as_str().to_string(),
         active,
@@ -351,6 +374,8 @@ fn summarize(
         harness_type,
         status,
         current_task,
+        peer_online,
+        last_seen_at,
         session_id: session.session_id,
         agent_id: session.agent_id,
         source: session.source,
@@ -429,7 +454,7 @@ fn handle_sessions_list(_params: Map<String, Value>) -> ControllerFuture {
             }
             Ok(out)
         })
-        .map_err(|e| format!("sessions_list: {e}"))?;
+        .map_err(|e| format!("sessions_list: {e:#}"))?;
         to_json(serde_json::json!({ "sessions": sessions }))
     })
 }
@@ -464,7 +489,7 @@ fn handle_sessions_create(params: Map<String, Value>) -> ControllerFuture {
         store::with_connection(&config.workspace_dir, |conn| {
             store::upsert_session(conn, &session)
         })
-        .map_err(|e| format!("sessions_create: {e}"))?;
+        .map_err(|e| format!("sessions_create: {e:#}"))?;
         super::bus::notify_orchestration_message(&agent_id, &session_id, "session");
         to_json(serde_json::json!({ "session": summarize(session, 0, false, None, 0) }))
     })
@@ -486,6 +511,8 @@ fn pinned_placeholder(session_id: &str) -> SessionSummary {
         message_count: 0,
         active: true,
         pinned: true,
+        peer_online: None,
+        last_seen_at: None,
     }
 }
 
@@ -507,7 +534,7 @@ fn handle_messages_list(params: Map<String, Value>) -> ControllerFuture {
             store::with_connection(&config.workspace_dir, |conn| {
                 store::list_messages_by_session(conn, &session_id, limit, before.as_deref())
             })
-            .map_err(|e| format!("messages_list: {e}"))?;
+            .map_err(|e| format!("messages_list: {e:#}"))?;
         to_json(serde_json::json!({ "messages": messages }))
     })
 }
@@ -556,7 +583,7 @@ fn handle_send_master_message(params: Map<String, Value>) -> ControllerFuture {
         if explicit.is_none() && session_id.is_none() {
             let now = chrono::Utc::now().to_rfc3339();
             let message_id = format!("master-ask:{now}");
-            let persisted = store::with_connection(&config.workspace_dir, |conn| {
+            let persisted: Result<i64, _> = store::with_connection(&config.workspace_dir, |conn| {
                 let seq = store::next_session_seq(conn, LOCAL_MASTER_AGENT, "master")?;
                 store::upsert_session(
                     conn,
@@ -585,27 +612,41 @@ fn handle_send_master_message(params: Map<String, Value>) -> ControllerFuture {
                         seq,
                         ..Default::default()
                     },
-                )
+                )?;
+                Ok(seq)
             });
-            if let Err(e) = persisted {
-                return Err(format!("master ask persist: {e}"));
-            }
-            // Fan to the renderer so the question shows immediately …
+            let seq = match persisted {
+                Ok(seq) => seq,
+                Err(e) => return Err(format!("master ask persist: {e}")),
+            };
+            // Fan to the renderer so the question shows immediately.
             super::bus::notify_orchestration_message(
                 LOCAL_MASTER_AGENT,
                 "master",
                 ChatKind::Master.as_str(),
             );
-            // … and publish the domain event so the wake subscriber schedules the
-            // reasoning graph (notify alone only reaches the socket, not the wake).
-            crate::core::event_bus::publish_global(
-                crate::core::event_bus::DomainEvent::OrchestrationSessionMessage {
-                    agent_id: LOCAL_MASTER_AGENT.to_string(),
-                    session_id: "master".to_string(),
-                    chat_kind: ChatKind::Master.as_str().to_string(),
-                },
+            // Forward the ask to the hosted brain — it wakes, reasons, and returns
+            // the reply as a `send_dm` effect on the "master" session, which the
+            // device renders back into this window (see `effect_executor`). No wake
+            // graph runs on the device.
+            let ts = super::wire::parse_ts_ms(&now).unwrap_or(0);
+            let envelope = super::wire::OrchestrationEventEnvelopeWire::build(
+                LOCAL_MASTER_AGENT,
+                "master",
+                seq,
+                "user",
+                LOCAL_MASTER_AGENT,
+                &body,
+                ts,
+                "message",
             );
-            log::debug!(target: LOG, "[orchestration_rpc] master_ask.local id={message_id}");
+            let forward_cfg = config.clone();
+            tokio::spawn(async move {
+                if let Err(e) = super::cloud::push_event(&forward_cfg, &envelope).await {
+                    log::warn!(target: LOG, "[orchestration_rpc] master_ask.forward_failed: {e}");
+                }
+            });
+            log::debug!(target: LOG, "[orchestration_rpc] master_ask.forwarded id={message_id} seq={seq}");
             return to_json(serde_json::json!({ "ok": true, "messageId": message_id }));
         }
 
@@ -618,12 +659,12 @@ fn handle_send_master_message(params: Map<String, Value>) -> ControllerFuture {
                 store::with_connection(&config.workspace_dir, move |conn| {
                     store::session_agent_id(conn, &sid)
                 })
-                .map_err(|e| format!("resolve session recipient: {e}"))?
+                .map_err(|e| format!("resolve session recipient: {e:#}"))?
                 .ok_or_else(|| "unknown session — specify a recipient".to_string())?
             }
             (None, None) => {
                 store::with_connection(&config.workspace_dir, store::latest_master_peer)
-                    .map_err(|e| format!("resolve recipient: {e}"))?
+                    .map_err(|e| format!("resolve recipient: {e:#}"))?
                     .ok_or_else(|| "no Master counterpart yet — specify a recipient".to_string())?
             }
         };
@@ -705,7 +746,7 @@ fn handle_mark_read(params: Map<String, Value>) -> ControllerFuture {
         store::with_connection(&config.workspace_dir, |conn| {
             store::mark_chat_read(conn, &session_id)
         })
-        .map_err(|e| format!("mark_read: {e}"))?;
+        .map_err(|e| format!("mark_read: {e:#}"))?;
         to_json(serde_json::json!({ "ok": true }))
     })
 }
@@ -713,35 +754,35 @@ fn handle_mark_read(params: Map<String, Value>) -> ControllerFuture {
 fn handle_status(_params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         let config = load_config("status").await?;
-        #[allow(clippy::type_complexity)]
-        let (steering, ingest_last, lag, last_error): (
-            Option<SteeringSummary>,
-            Option<String>,
-            i64,
-            Option<String>,
-        ) = store::with_connection(&config.workspace_dir, |conn| {
-            let cycle = store::current_cycle_counter(conn)?;
-            let steering =
-                store::current_steering_directive(conn, cycle)?.map(|d| SteeringSummary {
-                    text: d.text,
-                    created_at: d.created_at,
-                    expires_after_cycles: d.expires_after_cycles,
-                });
-            // MAX() always returns exactly one row (NULL when empty). Exclude the
-            // pinned master/subconscious windows: they're bumped by manual owner
-            // DMs (`handle_send_master_message`) and steering writes, which would
-            // otherwise mask a stalled real ingestion pipeline with fresh traffic.
-            let ingest_last: Option<String> = conn.query_row(
-                "SELECT MAX(last_message_at) FROM sessions \
-                 WHERE session_id NOT IN ('master', 'subconscious')",
-                [],
-                |r| r.get::<_, Option<String>>(0),
-            )?;
-            let lag = store::ingest_cursor_lag(conn)?;
-            let last_error = store::kv_get(conn, "orchestration:last_error")?;
-            Ok((steering, ingest_last, lag, last_error))
-        })
-        .map_err(|e| format!("status: {e}"))?;
+        // Steering + reachability come from the hosted health probe's kv cache
+        // (see `sync`), so this read stays synchronous and offline-safe.
+        let steering =
+            super::sync::cached_steering(&config).map(|(text, max_cycles)| SteeringSummary {
+                text,
+                // Hosted steering carries no local created_at; the renderer keys
+                // its display off `text` presence, not this field.
+                created_at: String::new(),
+                expires_after_cycles: max_cycles,
+            });
+        let cloud_reachable = super::sync::cloud_reachable(&config);
+
+        let (ingest_last, lag, last_error): (Option<String>, i64, Option<String>) =
+            store::with_connection(&config.workspace_dir, |conn| {
+                // MAX() always returns exactly one row (NULL when empty). Exclude the
+                // pinned master/subconscious windows: they're bumped by manual owner
+                // DMs (`handle_send_master_message`), which would otherwise mask a
+                // stalled real ingestion pipeline with fresh traffic.
+                let ingest_last: Option<String> = conn.query_row(
+                    "SELECT MAX(last_message_at) FROM sessions \
+                     WHERE session_id NOT IN ('master', 'subconscious')",
+                    [],
+                    |r| r.get::<_, Option<String>>(0),
+                )?;
+                let lag = store::ingest_cursor_lag(conn)?;
+                let last_error = store::kv_get(conn, "orchestration:last_error")?;
+                Ok((ingest_last, lag, last_error))
+            })
+            .map_err(|e| format!("status: {e:#}"))?;
 
         // Last subconscious tick (best-effort — subconscious store is separate).
         let last_tick_at =
@@ -757,6 +798,7 @@ fn handle_status(_params: Map<String, Value>) -> ControllerFuture {
             ingest_last_message_at: ingest_last.filter(|s| !s.is_empty()),
             ingest_cursor_lag: lag,
             last_error,
+            cloud_reachable,
         })
     })
 }
