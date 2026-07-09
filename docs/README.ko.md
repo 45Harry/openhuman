@@ -63,7 +63,7 @@ OpenHuman은 대부분의 어시스턴트가 갖지 못한 세 가지입니다: 
 
 ### 🧠 두뇌
 
-- **[메모리 트리(Memory Tree)](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian 위키](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**: 당신의 데이터는 점수가 매겨진 Markdown 트리로 압축되어 당신의 머신에 있는 SQLite에 저장되고, 열어서 직접 편집할 수 있는 [Obsidian 볼트](https://x.com/karpathy/status/2039805659525644595)로 미러링됩니다. 벡터 수프 같은 블랙박스가 아닙니다.
+- **[메모리 트리(Memory Tree)](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian 위키](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**: 당신의 데이터는 점수가 매겨진 Markdown 트리로 압축되어 당신의 머신에 있는 SQLite에 저장되고, 열어서 직접 편집할 수 있는 [Obsidian 볼트](https://obsidian.md)로 미러링됩니다. 벡터 수프 같은 블랙박스가 아닙니다.
 - **[100개 이상의 OAuth 통합, 5,000개 이상의 MCP 서버, 90,000개 이상의 Skills](https://tinyhumans.gitbook.io/openhuman/features/integrations)**: Gmail, Notion, GitHub, Slack 등 당신의 스택을 원클릭으로 연결하세요. [자동 가져오기(auto-fetch)](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki/auto-fetch)가 20분마다 두뇌에 데이터를 공급합니다. 덕분에 오늘 아침에 이미 내일의 컨텍스트를 가지고 있습니다.
 - **[잠재의식(subconscious)](https://tinyhumans.gitbook.io/openhuman/features/subconscious)**: 당신의 세계의 변화를 비교 분석하고, 목표를 진전시키고, 아침 브리핑을 작성하는 백그라운드 루프입니다. 타이핑을 멈춘 후에도 생각은 계속됩니다.
 - **[목표 및 할 일(Goals & Todos)](https://tinyhumans.gitbook.io/openhuman/features/goals-and-todos)**: 장기 목표, 스레드별 지속 목표, 그리고 대화별 공유 칸반 보드를 제공합니다.
@@ -92,7 +92,7 @@ OpenHuman은 대부분의 어시스턴트가 갖지 못한 세 가지입니다: 
 
 ## 몇 주가 아닌 몇 분 만에 구축되는 컨텍스트
 
-OpenHuman은 몇 분 만에 당신을 알게 되는 최초의 에이전트 하네스입니다. [Karpathy의 LLM 지식 베이스](https://x.com/karpathy/status/2039805659525644595)에서 영감을 받았습니다. 대부분의 에이전트는 아무런 정보 없이 시작합니다. Hermes는 당신의 작업을 지켜보며 학습하고, OpenClaw는 플러그인이 컨텍스트를 가져오기를 기다립니다. 어느 쪽이든 에이전트가 당신의 스택에 대해 충분히 알고 정말 유용해지기까지는 며칠 또는 몇 주가 걸립니다.
+OpenHuman은 몇 분 만에 당신을 알게 되는 최초의 에이전트 하네스입니다. [Karpathy의 LLM 지식 베이스](https://karpathy.ai/)에서 영감을 받았습니다. 대부분의 에이전트는 아무런 정보 없이 시작합니다. Hermes는 당신의 작업을 지켜보며 학습하고, OpenClaw는 플러그인이 컨텍스트를 가져오기를 기다립니다. 어느 쪽이든 에이전트가 당신의 스택에 대해 충분히 알고 정말 유용해지기까지는 며칠 또는 몇 주가 걸립니다.
 
 <p align="center">
  <img src="../gitbooks/.gitbook/assets/memory.png" alt="OpenHuman 컨텍스트 구축 다이어그램">

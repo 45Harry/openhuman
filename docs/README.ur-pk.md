@@ -77,7 +77,7 @@ OpenHuman تین چیزیں ہے جو زیادہ تر اسسٹنٹس نہیں ہ
 
 ### 🧠 دماغ
 
-- **[میموری ٹری](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian Wiki](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**: آپ کا ڈیٹا اسکور شدہ Markdown درختوں میں کمپریس ہو کر آپ کی مشین پر SQLite میں محفوظ ہوتا ہے، اور ایک [Obsidian والٹ](https://x.com/karpathy/status/2039805659525644595) کے طور پر عکس بند ہوتا ہے جسے آپ کھول اور ایڈٹ کر سکتے ہیں۔ کوئی ویکٹر سوپ بلیک باکس نہیں۔
+- **[میموری ٹری](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian Wiki](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**: آپ کا ڈیٹا اسکور شدہ Markdown درختوں میں کمپریس ہو کر آپ کی مشین پر SQLite میں محفوظ ہوتا ہے، اور ایک [Obsidian والٹ](https://obsidian.md) کے طور پر عکس بند ہوتا ہے جسے آپ کھول اور ایڈٹ کر سکتے ہیں۔ کوئی ویکٹر سوپ بلیک باکس نہیں۔
 - **[100+ OAuth انضمام، 5,000+ MCP سرورز، 90,000+ سکلز](https://tinyhumans.gitbook.io/openhuman/features/integrations)**: ایک کلک سے Gmail، Notion، GitHub، Slack اور اپنے باقی اسٹیک میں پلگ ان کریں۔ [خودکار لانا](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki/auto-fetch) ہر 20 منٹ میں دماغ کو خوراک دیتا ہے۔ اس کے پاس آج صبح ہی کل کا سیاق و سباق ہوتا ہے۔
 - **[ایک لاشعور](https://tinyhumans.gitbook.io/openhuman/features/subconscious)**: ایک پس منظر لوپ جو آپ کی دنیا کا موازنہ کرتا ہے، آپ کے اہداف کو آگے بڑھاتا ہے، اور آپ کی صبح کی بریفنگ لکھتا ہے۔ آپ کے ٹائپ کرنا چھوڑنے کے بعد بھی سوچ جاری رہتی ہے۔
 - **[اہداف اور ٹوڈوز](https://tinyhumans.gitbook.io/openhuman/features/goals-and-todos)**: طویل مدتی اہداف، فی تھریڈ پائیدار اہداف، اور ہر گفتگو کے لیے ایک مشترکہ کنبان بورڈ۔
@@ -106,7 +106,7 @@ OpenHuman تین چیزیں ہے جو زیادہ تر اسسٹنٹس نہیں ہ
 
 ## منٹوں میں سیاق و سباق، ہفتوں میں نہیں
 
-OpenHuman پہلا ایجنٹ ہارنس ہے جو منٹوں میں آپ کو جان لیتا ہے۔ کارپیتھی کے [LLM Knowledgebase](https://x.com/karpathy/status/2039805659525644595) سے متاثر۔ زیادہ تر ایجنٹ سرد شروع ہوتے ہیں۔ Hermes آپ کو کام کرتے دیکھ کر سیکھتا ہے؛ OpenClaw پلگ انز کا سیاق و سباق لانے کا انتظار کرتا ہے۔ کسی بھی طرح، آپ دن یا ہفتے گزارتے ہیں اس سے پہلے کہ ایجنٹ آپ کے اسٹیک کے بارے میں کافی جانے تاکہ حقیقی طور پر مفید ہو۔
+OpenHuman پہلا ایجنٹ ہارنس ہے جو منٹوں میں آپ کو جان لیتا ہے۔ کارپیتھی کے [LLM Knowledgebase](https://karpathy.ai/) سے متاثر۔ زیادہ تر ایجنٹ سرد شروع ہوتے ہیں۔ Hermes آپ کو کام کرتے دیکھ کر سیکھتا ہے؛ OpenClaw پلگ انز کا سیاق و سباق لانے کا انتظار کرتا ہے۔ کسی بھی طرح، آپ دن یا ہفتے گزارتے ہیں اس سے پہلے کہ ایجنٹ آپ کے اسٹیک کے بارے میں کافی جانے تاکہ حقیقی طور پر مفید ہو۔
 
 </div>
 

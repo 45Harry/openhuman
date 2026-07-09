@@ -63,7 +63,7 @@ OpenHuman ist drei Dinge, die die meisten Assistenten nicht sind: **ein Gehirn**
 
 ### 🧠 Das Gehirn
 
-- **[Memory Tree](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian-Wiki](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**: deine Daten, komprimiert in bewertete Markdown-Bäume in SQLite auf deiner Maschine, gespiegelt als [Obsidian-Vault](https://x.com/karpathy/status/2039805659525644595), das du öffnen und editieren kannst. Keine Vektor-Suppen-Blackbox.
+- **[Memory Tree](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian-Wiki](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**: deine Daten, komprimiert in bewertete Markdown-Bäume in SQLite auf deiner Maschine, gespiegelt als [Obsidian-Vault](https://obsidian.md), das du öffnen und editieren kannst. Keine Vektor-Suppen-Blackbox.
 - **[100+ OAuth-Integrationen, 5.000+ MCP-Server, 90.000+ Skills](https://tinyhumans.gitbook.io/openhuman/features/integrations)**: mit einem Klick in Gmail, Notion, GitHub, Slack und den Rest deines Stacks. [Auto-Fetch](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki/auto-fetch) füttert das Gehirn alle 20 Minuten. So hat es den Kontext von morgen schon heute Früh.
 - **[Ein Unterbewusstsein](https://tinyhumans.gitbook.io/openhuman/features/subconscious)**: eine Hintergrundschleife, die Veränderungen in deiner Welt erkennt, deine Ziele vorantreibt und dein Morgen-Briefing schreibt. Das Denken geht weiter, auch wenn du längst nicht mehr tippst.
 - **[Goals & Todos](https://tinyhumans.gitbook.io/openhuman/features/goals-and-todos)**: Langzeitziele, dauerhafte Ziele pro Thread und ein geteiltes Kanban-Board pro Unterhaltung.
@@ -92,7 +92,7 @@ OpenHuman ist drei Dinge, die die meisten Assistenten nicht sind: **ein Gehirn**
 
 ## Kontext in Minuten, nicht in Wochen
 
-OpenHuman ist das erste Agent-Harness, das dich in Minuten kennenlernt. Inspiriert von [Karpathys LLM-Knowledgebase](https://x.com/karpathy/status/2039805659525644595). Die meisten Agenten starten aus dem Kalten. Hermes lernt, indem er dir bei der Arbeit zusieht; OpenClaw wartet darauf, dass Plugins Kontext einspielen. So oder so vergehen Tage oder Wochen, bevor der Agent genug über deinen Stack weiß, um wirklich nützlich zu sein.
+OpenHuman ist das erste Agent-Harness, das dich in Minuten kennenlernt. Inspiriert von [Karpathys LLM-Knowledgebase](https://karpathy.ai/). Die meisten Agenten starten aus dem Kalten. Hermes lernt, indem er dir bei der Arbeit zusieht; OpenClaw wartet darauf, dass Plugins Kontext einspielen. So oder so vergehen Tage oder Wochen, bevor der Agent genug über deinen Stack weiß, um wirklich nützlich zu sein.
 
 <p align="center">
  <img src="../gitbooks/.gitbook/assets/memory.png" alt="Diagramm zum OpenHuman-Kontextaufbau">

@@ -63,7 +63,7 @@ OpenHuman 是大多数助手所不具备的三样东西的集合：**一颗大�
 
 ### 🧠 大脑
 
-- **[记忆树](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian Wiki](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**：你的数据被压缩为带评分的 Markdown 树，存储在你本机的 SQLite 中，并镜像为一个你可以打开和编辑的 [Obsidian 仓库](https://x.com/karpathy/status/2039805659525644595)。没有向量浓汤式的黑箱。
+- **[记忆树](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian Wiki](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**：你的数据被压缩为带评分的 Markdown 树，存储在你本机的 SQLite 中，并镜像为一个你可以打开和编辑的 [Obsidian 仓库](https://obsidian.md)。没有向量浓汤式的黑箱。
 - **[100+ OAuth 集成、5,000+ MCP 服务器、90,000+ Skills](https://tinyhumans.gitbook.io/openhuman/features/integrations)**：一键接入 Gmail、Notion、GitHub、Slack 以及你技术栈中的其他服务。[自动拉取](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki/auto-fetch)每 20 分钟为大脑输送养分，所以它在今天早上就已经拥有明天的上下文。
 - **[潜意识](https://tinyhumans.gitbook.io/openhuman/features/subconscious)**：一个后台循环，持续比对你的世界的变化、推进你的目标，并为你撰写晨间简报。在你停止输入之后，思考仍在继续。
 - **[目标与待办](https://tinyhumans.gitbook.io/openhuman/features/goals-and-todos)**：长期目标、持久化的会话级目标，以及每个对话共享的看板。
@@ -92,7 +92,7 @@ OpenHuman 是大多数助手所不具备的三样东西的集合：**一颗大�
 
 ## 几分钟内建立上下文，而非数周
 
-OpenHuman 是首个能在几分钟内了解你的智能体框架。灵感来源于 [Karpathy 的 LLM 知识库](https://x.com/karpathy/status/2039805659525644595)。大多数智能体从零开始。Hermes 通过观察你的工作来学习；OpenClaw 等待插件输送上下文。无论哪种方式，你都需要花费数天甚至数周时间，智能体才能对你的技术栈有足够的了解从而真正发挥作用。
+OpenHuman 是首个能在几分钟内了解你的智能体框架。灵感来源于 [Karpathy 的 LLM 知识库](https://karpathy.ai/)。大多数智能体从零开始。Hermes 通过观察你的工作来学习；OpenClaw 等待插件输送上下文。无论哪种方式，你都需要花费数天甚至数周时间，智能体才能对你的技术栈有足够的了解从而真正发挥作用。
 
 <p align="center">
  <img src="../gitbooks/.gitbook/assets/memory.png" alt="OpenHuman 上下文构建示意图">
