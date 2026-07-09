@@ -2,6 +2,9 @@
 'use strict';
 
 const { spawn, spawnSync, execSync } = require('child_process');
+const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const readline = require('readline');
 const http = require('http');
@@ -14,8 +17,40 @@ const CORE_PORT = process.env.OPENHUMAN_CORE_PORT || '7788';
 const CORE_HOST = process.env.OPENHUMAN_CORE_HOST || '127.0.0.1';
 const RPC_URL = `http://${CORE_HOST}:${CORE_PORT}/rpc`;
 
+function readRpcToken() {
+  const envToken = (process.env.OPENHUMAN_CORE_TOKEN || '').trim();
+  if (envToken) return envToken;
+
+  const home = os.homedir();
+  if (!home) return '';
+  for (const dir of ['.openhuman', '.openhuman-staging']) {
+    const tokenPath = path.join(home, dir, 'core.token');
+    try {
+      const token = fs.readFileSync(tokenPath, 'utf8').trim();
+      if (token) return token;
+    } catch {
+      // Best-effort: the core may be using env auth or may not have written
+      // the standalone token yet. The RPC response will surface auth failures.
+    }
+  }
+  return '';
+}
+
+function newThreadId() {
+  if (typeof crypto.randomUUID === 'function') {
+    return `npm-cli-${crypto.randomUUID()}`;
+  }
+  return `npm-cli-${crypto.randomBytes(16).toString('hex')}`;
+}
+
+function argValue(args, flag) {
+  const idx = args.indexOf(flag);
+  return idx !== -1 ? args[idx + 1] : null;
+}
+
 function rpcCall(method, params) {
   return new Promise((resolve, reject) => {
+    const token = readRpcToken();
     const body = JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
@@ -26,7 +61,10 @@ function rpcCall(method, params) {
     });
     const req = http.request(`${RPC_URL}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
     }, (res) => {
       let data = '';
       res.on('data', (c) => data += c);
@@ -105,8 +143,10 @@ async function runChat(args) {
     }
   }
 
-  const modelIdx = args.indexOf('--model');
-  const model = modelIdx !== -1 ? args[modelIdx + 1] : null;
+  const model = argValue(args, '--model');
+  const rawTemperature = argValue(args, '--temp') ?? argValue(args, '--temperature');
+  const temperature = rawTemperature == null ? null : Number(rawTemperature);
+  const threadId = newThreadId();
 
   console.log('');
   console.log(' OpenHuman Chat — interactive coding assistant');
@@ -136,9 +176,11 @@ async function runChat(args) {
     }
 
     try {
-      const result = await rpcCall('agent.chat', {
+      const result = await rpcCall('openhuman.inference_agent_chat', {
         message: trimmed,
         model_override: model,
+        temperature: Number.isFinite(temperature) ? temperature : null,
+        thread_id: threadId,
       });
       // Guard the object access: a null/undefined result would otherwise throw
       // "Cannot read properties of null" inside the try and surface as a
