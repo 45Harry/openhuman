@@ -236,7 +236,7 @@ fn agent_not_ready_message() -> String {
 }
 
 fn login_instructions() -> &'static str {
-    "To log in, get your API token from the OpenHuman app and run:\n  openhuman login <token>\n\nOr set OPENHUMAN_API_KEY in your environment, then use /login here to refresh the session."
+    "To log in, get your session token from the OpenHuman app and run:\n  openhuman auth store_session --token <token>\n\nOr set provider credentials in the app, then use /login here to refresh the session."
 }
 
 fn format_status(config: &Config) -> String {
