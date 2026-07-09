@@ -1081,7 +1081,7 @@ const messages: TranslationMap = {
     'Não foi possível concluir o processo de integração. Por favor, tente novamente.',
   'onboarding.apiKeys.title': 'Vamos Adicionar Suas Chaves de API',
   'onboarding.apiKeys.subtitle':
-    'Você pode colá-las agora ou pular e adicioná-las depois em Configurações › IA. As chaves são armazenadas neste dispositivo, criptografadas em repouso.',
+    'Você pode colá-las agora ou pular e adicioná-las depois em Conexões › chaves de API. As chaves são armazenadas neste dispositivo, criptografadas em repouso.',
   'onboarding.apiKeys.openaiLabel': 'Chave de API OpenAI',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -5515,6 +5515,11 @@ const messages: TranslationMap = {
   'settings.appearance.fontSizeXLargeDesc': 'O maior texto, para máxima legibilidade.',
   'settings.appearance.fontSizeHelperText':
     'Dimensiona o texto em todo o app — chat, configurações e painéis — independentemente da configuração de fonte do seu sistema.',
+  'settings.appearance.fontSizeCustomLabel': 'Tamanho personalizado',
+  'settings.appearance.fontSizeCustomAria': 'Tamanho da fonte personalizado em pixels',
+  'settings.appearance.fontSizeCustomSliderAria':
+    'Controle deslizante de tamanho de fonte personalizado, em pixels',
+  'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': 'Barra inferior da guia',
   'settings.appearance.tabBarAlwaysShowLabels': 'Sempre mostrar rótulos',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':
@@ -6750,21 +6755,21 @@ const messages: TranslationMap = {
   'memoryTree.status.extractionCoverage':
     'Cobertura de extração: {pct}% dos fragmentos têm estrutura',
   'memory.health.remediation.budget_exhausted':
-    'Os embeddings de memória atingiram o orçamento gerenciado. Configure embeddings locais do Ollama (Configurações → IA → Incorporações) ou adicione sua própria chave de API de embeddings para continuar construindo a memória.',
+    'Os embeddings de memória atingiram o orçamento gerenciado. Configure embeddings locais do Ollama (Conexões → Chaves de API → Incorporações) ou adicione sua própria chave de API de embeddings para continuar construindo a memória.',
   'memory.health.remediation.auth_missing':
-    'Nenhuma credencial de embeddings encontrada. Faça login no OpenHuman ou configure embeddings locais do Ollama em Configurações → IA → Incorporações.',
+    'Nenhuma credencial de embeddings encontrada. Faça login no OpenHuman ou configure embeddings locais do Ollama em Conexões → Chaves de API → Incorporações.',
   'memory.health.remediation.auth_invalid':
-    'Suas credenciais de embeddings foram rejeitadas. Autentique-se novamente ou mude para embeddings locais do Ollama em Configurações → IA → Incorporações.',
+    'Suas credenciais de embeddings foram rejeitadas. Autentique-se novamente ou mude para embeddings locais do Ollama em Conexões → Chaves de API → Incorporações.',
   'memory.health.remediation.embeddings_unconfigured':
-    'Nenhum provedor de embeddings está configurado, então a recuperação semântica está desativada. Configure embeddings locais do Ollama (recomendado) ou adicione uma chave de embeddings em Configurações → IA → Incorporações.',
+    'Nenhum provedor de embeddings está configurado, então a recuperação semântica está desativada. Configure embeddings locais do Ollama (recomendado) ou adicione uma chave de embeddings em Conexões → Chaves de API → Incorporações.',
   'memory.health.remediation.embedding_dim_mismatch':
     'O modelo de embeddings retorna o tamanho de vetor errado (a memória espera 1024 dimensões). Escolha um modelo de 1024 dimensões ou solicite 1024 dimensões ao seu provedor.',
   'memory.health.remediation.local_model_unavailable':
-    'Um modelo local necessário não está disponível. Instale/execute o Ollama e baixe o modelo, ou mude esta carga de trabalho para um provedor de nuvem em Configurações → IA.',
+    'Um modelo local necessário não está disponível. Instale/execute o Ollama e baixe o modelo, ou mude esta carga de trabalho para um provedor de nuvem em Conexões → Chaves de API.',
   'memory.health.remediation.extraction_timeout':
-    'O modelo de extração de memória está expirando o tempo limite, então o wiki tem pouca estrutura. Mude o modelo de extração de memória para um mais rápido em Configurações → IA.',
+    'O modelo de extração de memória está expirando o tempo limite, então o wiki tem pouca estrutura. Mude o modelo de extração de memória para um mais rápido em Conexões → Chaves de API → LLM.',
   'memory.health.remediation.summarizer_unavailable':
-    'Nenhum provedor de resumo está disponível para Criar árvores de resumo. Ative a IA local (Ollama) ou ative o resumo na nuvem em Configurações → IA → Memória.',
+    'Nenhum provedor de resumo está disponível para Criar árvores de resumo. Ative a IA local (Ollama), ou defina memory_tree.cloud_summarization_opt_in=true e configure um provedor LLM em Conexões → Chaves de API → LLM.',
   'memory.health.remediation.empty_input_refused':
     'Um item de memória foi ignorado porque o texto estava vazio. Nenhuma ação necessária — itens novos continuam a ser incorporados normalmente.',
   'memory.health.remediation.storage_unavailable':
@@ -6772,7 +6777,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.transient':
     'Um erro temporário interrompeu o processamento da memória. Será repetido automaticamente.',
   'memory.health.remediation.unknown':
-    'O processamento da memória encontrou um problema. Verifique Configurações → IA para a configuração.',
+    'O processamento da memória encontrou um problema. Verifique Conexões → Chaves de API para a configuração.',
   // Chat — agent-generated artifacts (#2779)
 
   // Chat composer toolbar

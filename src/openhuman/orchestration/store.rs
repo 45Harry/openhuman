@@ -5,6 +5,7 @@
 //! `is_workspace_internal_path`). Follows the subconscious/cron `with_connection`
 //! pattern.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -43,8 +44,9 @@ const SCHEMA_DDL: &str = "
     );
 
     -- `event_kind`/`tool_name`/`call_id` carry the v2 per-message event shape
-    -- (`event.kind` + tool identity/correlation). Nullable and additive; v1 and
-    -- pinned master/subconscious rows leave them NULL.
+    -- (`event.kind` + tool identity/correlation). `ok`/`is_error`/`exit_code`
+    -- carry the `tool_result` outcome. Nullable and additive; v1 and pinned
+    -- master/subconscious rows leave them NULL.
     CREATE TABLE IF NOT EXISTS messages (
         id         TEXT PRIMARY KEY,
         agent_id   TEXT NOT NULL,
@@ -56,7 +58,10 @@ const SCHEMA_DDL: &str = "
         seq        INTEGER NOT NULL DEFAULT 0,
         event_kind TEXT,
         tool_name  TEXT,
-        call_id    TEXT
+        call_id    TEXT,
+        ok         INTEGER,
+        is_error   INTEGER,
+        exit_code  INTEGER
     );
 
     CREATE INDEX IF NOT EXISTS idx_messages_session
@@ -237,6 +242,10 @@ fn migrate(conn: &Connection) -> Result<()> {
     add_column_if_missing(conn, "messages", "event_kind", "TEXT")?;
     add_column_if_missing(conn, "messages", "tool_name", "TEXT")?;
     add_column_if_missing(conn, "messages", "call_id", "TEXT")?;
+    // v2 tool_result outcome — additive, existing rows default NULL.
+    add_column_if_missing(conn, "messages", "ok", "INTEGER")?;
+    add_column_if_missing(conn, "messages", "is_error", "INTEGER")?;
+    add_column_if_missing(conn, "messages", "exit_code", "INTEGER")?;
 
     // v2 `session_info` enrichment columns (spec §4). Same per-column,
     // freshness-independent guard as the run-state block above: a fresh DB has
@@ -373,8 +382,8 @@ pub fn insert_message(conn: &Connection, m: &OrchestrationMessage) -> Result<boo
     let changed = conn.execute(
         "INSERT OR IGNORE INTO messages
            (id, agent_id, session_id, chat_kind, role, body, timestamp, seq,
-            event_kind, tool_name, call_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            event_kind, tool_name, call_id, ok, is_error, exit_code)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             m.id,
             m.agent_id,
@@ -387,6 +396,9 @@ pub fn insert_message(conn: &Connection, m: &OrchestrationMessage) -> Result<boo
             m.event_kind,
             m.tool_name,
             m.call_id,
+            m.ok,
+            m.is_error,
+            m.exit_code,
         ],
     )?;
     Ok(changed > 0)
@@ -399,6 +411,67 @@ pub fn count_messages(conn: &Connection, agent_id: &str, session_id: &str) -> Re
         params![agent_id, session_id],
         |row| row.get(0),
     )?)
+}
+
+/// Count transcript-visible messages for a session, using the same visibility
+/// predicate as message reads, unread counts, and roster previews.
+pub fn count_visible_messages(conn: &Connection, agent_id: &str, session_id: &str) -> Result<i64> {
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM messages WHERE agent_id = ?1 AND session_id = ?2
+             AND (event_kind IS NULL
+                  OR event_kind NOT IN ('status', 'lifecycle', 'unknown', 'session_info'))",
+        params![agent_id, session_id],
+        |row| row.get(0),
+    )?)
+}
+
+/// Count transcript-visible messages for a pinned chat, whose transcript is
+/// scoped only by `session_id` and can include rows from multiple peers.
+pub fn count_visible_messages_by_session(conn: &Connection, session_id: &str) -> Result<i64> {
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM messages WHERE session_id = ?1
+             AND (event_kind IS NULL
+                  OR event_kind NOT IN ('status', 'lifecycle', 'unknown', 'session_info'))",
+        params![session_id],
+        |row| row.get(0),
+    )?)
+}
+
+/// Transcript-visible message counts keyed by `(agent_id, session_id)`.
+pub fn visible_message_counts(conn: &Connection) -> Result<HashMap<(String, String), i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT agent_id, session_id, COUNT(*)
+           FROM messages
+          WHERE event_kind IS NULL
+             OR event_kind NOT IN ('status', 'lifecycle', 'unknown', 'session_info')
+          GROUP BY agent_id, session_id",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                (row.get::<_, String>(0)?, row.get::<_, String>(1)?),
+                row.get::<_, i64>(2)?,
+            ))
+        })?
+        .collect::<std::result::Result<HashMap<_, _>, _>>()?;
+    Ok(rows)
+}
+
+/// Transcript-visible message counts keyed by `session_id` for pinned chats.
+pub fn visible_message_counts_by_session(conn: &Connection) -> Result<HashMap<String, i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT session_id, COUNT(*)
+           FROM messages
+          WHERE event_kind IS NULL
+             OR event_kind NOT IN ('status', 'lifecycle', 'unknown', 'session_info')
+          GROUP BY session_id",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?
+        .collect::<std::result::Result<HashMap<_, _>, _>>()?;
+    Ok(rows)
 }
 
 /// The next monotonic per-session ingest ordinal: `MAX(seq) + 1` over the
@@ -482,7 +555,7 @@ pub fn list_messages_by_session(
         Some(before) => {
             let mut stmt = conn.prepare(
                 "SELECT id, agent_id, session_id, chat_kind, role, body, timestamp, seq,
-                        event_kind, tool_name, call_id
+                        event_kind, tool_name, call_id, ok, is_error, exit_code
                    FROM messages WHERE session_id = ?1 AND timestamp < ?2
                      AND (event_kind IS NULL
                           OR event_kind NOT IN ('status', 'lifecycle', 'unknown', 'session_info'))
@@ -496,7 +569,7 @@ pub fn list_messages_by_session(
         None => {
             let mut stmt = conn.prepare(
                 "SELECT id, agent_id, session_id, chat_kind, role, body, timestamp, seq,
-                        event_kind, tool_name, call_id
+                        event_kind, tool_name, call_id, ok, is_error, exit_code
                    FROM messages WHERE session_id = ?1
                      AND (event_kind IS NULL
                           OR event_kind NOT IN ('status', 'lifecycle', 'unknown', 'session_info'))
@@ -528,6 +601,9 @@ fn map_message_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<OrchestrationMes
         event_kind: row.get(8)?,
         tool_name: row.get(9)?,
         call_id: row.get(10)?,
+        ok: row.get(11)?,
+        is_error: row.get(12)?,
+        exit_code: row.get(13)?,
     })
 }
 
@@ -686,7 +762,7 @@ pub fn list_recent_messages(
 ) -> Result<Vec<OrchestrationMessage>> {
     let mut stmt = conn.prepare(
         "SELECT id, agent_id, session_id, chat_kind, role, body, timestamp, seq,
-                event_kind, tool_name, call_id
+                event_kind, tool_name, call_id, ok, is_error, exit_code
            FROM messages WHERE agent_id = ?1 AND session_id = ?2
            ORDER BY timestamp DESC, seq DESC LIMIT ?3",
     )?;
@@ -1061,6 +1137,38 @@ mod tests {
     }
 
     #[test]
+    fn persists_and_reads_back_tool_result_outcome() {
+        let tmp = tempfile::tempdir().unwrap();
+        with_connection(tmp.path(), |conn| {
+            upsert_session(conn, &session("@a", "h1", 1))?;
+            let failed = OrchestrationMessage {
+                event_kind: Some("tool_result".into()),
+                tool_name: Some("Bash".into()),
+                call_id: Some("c1".into()),
+                ok: Some(false),
+                is_error: Some(true),
+                exit_code: Some(1),
+                ..msg("m1", "@a", "h1", 1)
+            };
+            assert!(insert_message(conn, &failed)?);
+            let back = list_recent_messages(conn, "@a", "h1", 10)?;
+            assert_eq!(back.len(), 1);
+            assert_eq!(back[0].ok, Some(false));
+            assert_eq!(back[0].is_error, Some(true));
+            assert_eq!(back[0].exit_code, Some(1));
+            // A plain message leaves the outcome columns NULL → None on read.
+            assert!(insert_message(conn, &msg("m2", "@a", "h1", 2))?);
+            let plain = list_recent_messages(conn, "@a", "h1", 10)?;
+            let m2 = plain.iter().find(|m| m.id == "m2").unwrap();
+            assert_eq!(m2.ok, None);
+            assert_eq!(m2.is_error, None);
+            assert_eq!(m2.exit_code, None);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
     fn latest_message_preview_returns_newest_or_none() {
         let tmp = tempfile::tempdir().unwrap();
         with_connection(tmp.path(), |conn| {
@@ -1172,6 +1280,28 @@ mod tests {
 
             // Unread (cursor at 0) counts the two visible rows, not the 4 hidden.
             assert_eq!(unread_count(conn, "h1")?, 2);
+            // UI session summaries use the same visibility predicate as unread and
+            // transcript reads, while the raw observability count still includes
+            // all persisted relay-dedupe rows.
+            assert_eq!(count_visible_messages(conn, "@a", "h1")?, 2);
+            assert_eq!(count_messages(conn, "@a", "h1")?, 6);
+
+            let mut other_peer = msg("other-peer", "@b", "h1", 7);
+            other_peer.timestamp = "2026-07-02T00:00:07Z".into();
+            insert_message(conn, &other_peer)?;
+            assert_eq!(count_visible_messages(conn, "@a", "h1")?, 2);
+            assert_eq!(count_visible_messages_by_session(conn, "h1")?, 3);
+            let by_agent_session = visible_message_counts(conn)?;
+            assert_eq!(
+                by_agent_session.get(&("@a".to_string(), "h1".to_string())),
+                Some(&2)
+            );
+            assert_eq!(
+                by_agent_session.get(&("@b".to_string(), "h1".to_string())),
+                Some(&1)
+            );
+            let by_session = visible_message_counts_by_session(conn)?;
+            assert_eq!(by_session.get("h1"), Some(&3));
 
             // Roster preview skips the hidden rows → newest visible is the call.
             assert_eq!(
@@ -1504,7 +1634,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_pre_v2_schema_by_adding_status_and_event_columns() {
+    fn migrates_pre_v2_schema_by_adding_session_and_message_columns() {
         // A store created before the harness-session-v2 receiver: the sessions and
         // messages tables lack the new run-state / event columns. Opening through
         // `with_connection` must add them additively (existing rows read NULL) and
@@ -1550,9 +1680,18 @@ mod tests {
                 ("sessions", "status_state"),
                 ("sessions", "current_detail"),
                 ("sessions", "active_call_id"),
+                ("sessions", "title"),
+                ("sessions", "model"),
+                ("sessions", "handle"),
+                ("sessions", "repo"),
+                ("sessions", "branch"),
+                ("sessions", "capabilities"),
                 ("messages", "event_kind"),
                 ("messages", "tool_name"),
                 ("messages", "call_id"),
+                ("messages", "ok"),
+                ("messages", "is_error"),
+                ("messages", "exit_code"),
             ] {
                 assert!(
                     column_exists(conn, table, column)?,
@@ -1569,6 +1708,9 @@ mod tests {
             assert_eq!(msgs.len(), 1);
             assert_eq!(msgs[0].body, "legacy body");
             assert_eq!(msgs[0].event_kind, None);
+            assert_eq!(msgs[0].ok, None);
+            assert_eq!(msgs[0].is_error, None);
+            assert_eq!(msgs[0].exit_code, None);
 
             // And the upgraded schema accepts writes that populate the new fields.
             upsert_session(
@@ -1584,6 +1726,24 @@ mod tests {
             assert_eq!(updated.status_state.as_deref(), Some("running"));
             assert_eq!(updated.current_detail.as_deref(), Some("compiling"));
             assert_eq!(updated.active_call_id.as_deref(), Some("call-1"));
+            let tool_result = OrchestrationMessage {
+                event_kind: Some("tool_result".into()),
+                tool_name: Some("Bash".into()),
+                call_id: Some("call-1".into()),
+                ok: Some(false),
+                is_error: Some(true),
+                exit_code: Some(1),
+                ..msg("m-new", "@a", "h-old", 2)
+            };
+            assert!(insert_message(conn, &tool_result)?);
+            let upgraded_messages = list_recent_messages(conn, "@a", "h-old", 10)?;
+            let saved = upgraded_messages
+                .iter()
+                .find(|m| m.id == "m-new")
+                .expect("upgraded schema stores outcome fields");
+            assert_eq!(saved.ok, Some(false));
+            assert_eq!(saved.is_error, Some(true));
+            assert_eq!(saved.exit_code, Some(1));
             Ok(())
         })
         .unwrap();

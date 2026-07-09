@@ -1056,7 +1056,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.exitError': 'ऑनबोर्डिंग पूरी नहीं हो सकी। कृपया पुनः प्रयास करें।',
   'onboarding.apiKeys.title': 'अपनी API Keys जोड़ें',
   'onboarding.apiKeys.subtitle':
-    'अभी पेस्ट करें या बाद में Settings › AI में जोड़ें। Keys इस डिवाइस पर एन्क्रिप्टेड रहती हैं।',
+    'अभी पेस्ट करें या बाद में कनेक्शन › API कुंजियाँ में जोड़ें। Keys इस डिवाइस पर एन्क्रिप्टेड रहती हैं।',
   'onboarding.apiKeys.openaiLabel': 'OpenAI API कुंजी',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -5424,6 +5424,10 @@ const messages: TranslationMap = {
   'settings.appearance.fontSizeXLargeDesc': 'अधिकतम पठनीयता के लिए सबसे बड़ा टेक्स्ट।',
   'settings.appearance.fontSizeHelperText':
     'आपके सिस्टम फ़ॉन्ट सेटिंग से स्वतंत्र रूप से पूरे ऐप — चैट, सेटिंग्स और पैनल — में टेक्स्ट का आकार बदलता है।',
+  'settings.appearance.fontSizeCustomLabel': 'कस्टम आकार',
+  'settings.appearance.fontSizeCustomAria': 'पिक्सेल में कस्टम फ़ॉन्ट आकार',
+  'settings.appearance.fontSizeCustomSliderAria': 'कस्टम फ़ॉन्ट आकार स्लाइडर, पिक्सेल में',
+  'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': 'निचला टैब बार',
   'settings.appearance.tabBarAlwaysShowLabels': 'हमेशा लेबल दिखाएं',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':
@@ -6644,21 +6648,21 @@ const messages: TranslationMap = {
   'memoryTree.status.degradedStructure': 'विकी संरचना अधूरी',
   'memoryTree.status.extractionCoverage': 'एक्सट्रैक्शन कवरेज: {pct}% खंडों में संरचना है',
   'memory.health.remediation.budget_exhausted':
-    'मेमोरी एम्बेडिंग प्रबंधित बजट तक पहुँच गई। स्थानीय Ollama एम्बेडिंग सेट करें (सेटिंग्स → AI → एम्बेडिंग्स) या मेमोरी बनाना जारी रखने के लिए अपनी स्वयं की एम्बेडिंग API कुंजी जोड़ें।',
+    'मेमोरी एम्बेडिंग प्रबंधित बजट तक पहुँच गई। स्थानीय Ollama एम्बेडिंग सेट करें (कनेक्शन → API कुंजियाँ → एम्बेडिंग्स) या मेमोरी बनाना जारी रखने के लिए अपनी स्वयं की एम्बेडिंग API कुंजी जोड़ें।',
   'memory.health.remediation.auth_missing':
-    'कोई एम्बेडिंग क्रेडेंशियल नहीं मिला। OpenHuman में लॉग इन करें, या सेटिंग्स → AI → एम्बेडिंग्स में स्थानीय Ollama एम्बेडिंग सेट करें।',
+    'कोई एम्बेडिंग क्रेडेंशियल नहीं मिला। OpenHuman में लॉग इन करें, या कनेक्शन → API कुंजियाँ → एम्बेडिंग्स में स्थानीय Ollama एम्बेडिंग सेट करें।',
   'memory.health.remediation.auth_invalid':
-    'आपके एम्बेडिंग क्रेडेंशियल अस्वीकार कर दिए गए। फिर से प्रमाणित करें, या सेटिंग्स → AI → एम्बेडिंग्स में स्थानीय Ollama एम्बेडिंग पर स्विच करें।',
+    'आपके एम्बेडिंग क्रेडेंशियल अस्वीकार कर दिए गए। फिर से प्रमाणित करें, या कनेक्शन → API कुंजियाँ → एम्बेडिंग्स में स्थानीय Ollama एम्बेडिंग पर स्विच करें।',
   'memory.health.remediation.embeddings_unconfigured':
-    'कोई एम्बेडिंग प्रदाता कॉन्फ़िगर नहीं किया गया है, इसलिए सिमेंटिक रिकॉल बंद है। स्थानीय Ollama एम्बेडिंग सेट करें (अनुशंसित) या सेटिंग्स → AI → एम्बेडिंग्स में एम्बेडिंग कुंजी जोड़ें।',
+    'कोई एम्बेडिंग प्रदाता कॉन्फ़िगर नहीं किया गया है, इसलिए सिमेंटिक रिकॉल बंद है। स्थानीय Ollama एम्बेडिंग सेट करें (अनुशंसित) या कनेक्शन → API कुंजियाँ → एम्बेडिंग्स में एम्बेडिंग कुंजी जोड़ें।',
   'memory.health.remediation.embedding_dim_mismatch':
     'एम्बेडिंग मॉडल गलत वेक्टर आकार लौटाता है (मेमोरी को 1024 आयाम अपेक्षित हैं)। 1024-आयाम वाला मॉडल चुनें, या अपने प्रदाता से 1024 आयाम का अनुरोध करें।',
   'memory.health.remediation.local_model_unavailable':
-    'एक आवश्यक स्थानीय मॉडल उपलब्ध नहीं है। Ollama इंस्टॉल/चलाएँ और मॉडल डाउनलोड करें, या सेटिंग्स → AI में इस वर्कलोड को क्लाउड प्रदाता पर स्विच करें।',
+    'एक आवश्यक स्थानीय मॉडल उपलब्ध नहीं है। Ollama इंस्टॉल/चलाएँ और मॉडल डाउनलोड करें, या कनेक्शन → API कुंजियाँ में इस वर्कलोड को क्लाउड प्रदाता पर स्विच करें।',
   'memory.health.remediation.extraction_timeout':
-    'मेमोरी एक्सट्रैक्शन मॉडल टाइम आउट हो रहा है, इसलिए विकी में बहुत कम संरचना है। सेटिंग्स → AI में मेमोरी एक्सट्रैक्शन मॉडल को तेज़ मॉडल में बदलें।',
+    'मेमोरी एक्सट्रैक्शन मॉडल टाइम आउट हो रहा है, इसलिए विकी में बहुत कम संरचना है। कनेक्शन → API कुंजियाँ → LLM में मेमोरी एक्सट्रैक्शन मॉडल को तेज़ मॉडल में बदलें।',
   'memory.health.remediation.summarizer_unavailable':
-    'सारांश ट्री बनाएँ के लिए कोई सारांश प्रदाता उपलब्ध नहीं है। स्थानीय AI (Ollama) सक्षम करें, या सेटिंग्स → AI → मेमोरी में क्लाउड सारांश सक्षम करें।',
+    'सारांश ट्री बनाएँ के लिए कोई सारांश प्रदाता उपलब्ध नहीं है। स्थानीय AI (Ollama) सक्षम करें, या memory_tree.cloud_summarization_opt_in=true सेट करके कनेक्शन → API कुंजियाँ → LLM में LLM provider कॉन्फ़िगर करें।',
   'memory.health.remediation.empty_input_refused':
     'एक मेमोरी आइटम छोड़ दिया गया क्योंकि उसका टेक्स्ट खाली था। कोई कार्रवाई आवश्यक नहीं — नए आइटम सामान्य रूप से एम्बेड होते रहेंगे।',
   'memory.health.remediation.storage_unavailable':
@@ -6666,7 +6670,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.transient':
     'एक अस्थायी त्रुटि ने मेमोरी प्रोसेसिंग को बाधित किया। स्वचालित रूप से पुनः प्रयास किया जाएगा।',
   'memory.health.remediation.unknown':
-    'मेमोरी प्रोसेसिंग में एक समस्या आई। कॉन्फ़िगरेशन के लिए सेटिंग्स → AI जाँचें।',
+    'मेमोरी प्रोसेसिंग में एक समस्या आई। कॉन्फ़िगरेशन के लिए कनेक्शन → API कुंजियाँ जाँचें।',
   // Chat — agent-generated artifacts (#2779)
 
   // Chat composer toolbar
