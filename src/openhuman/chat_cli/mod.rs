@@ -53,7 +53,7 @@ fn run_interactive_session() -> Result<()> {
         .block_on(Config::load_or_init())
         .map_err(|e| anyhow!("config load failed: {e}"))?;
     config.action_dir = std::env::current_dir().map_err(|e| anyhow!("failed to get cwd: {e}"))?;
-    let mut agent = match Agent::from_config(&config) {
+    let mut agent = match build_cli_agent(&config) {
         Ok(agent) => Some(agent),
         Err(e) => {
             log::debug!("[chat_cli] agent init failed before TUI start: {e}");
@@ -184,7 +184,7 @@ async fn handle_cmd(cmd: AgentCmd, config: &mut Config, agent: &mut Option<Agent
 }
 
 fn handle_new_conversation(config: &Config, agent: &mut Option<Agent>) -> String {
-    match Agent::from_config(config) {
+    match build_cli_agent(config) {
         Ok(rebuilt) => {
             *agent = Some(rebuilt);
             "Started a new conversation.".into()
@@ -202,15 +202,23 @@ async fn handle_switch_model(
     agent: &mut Option<Agent>,
     name: String,
 ) -> String {
+    let chat_provider = config
+        .chat_provider
+        .as_deref()
+        .and_then(|current| rewrite_chat_provider_model(current, &name));
     match load_and_apply_model_settings(ModelSettingsPatch {
         default_model: Some(name.clone()),
+        chat_provider: chat_provider.clone(),
         ..Default::default()
     })
     .await
     {
         Ok(_) => {
             config.default_model = Some(name.clone());
-            match Agent::from_config(config) {
+            if let Some(route) = chat_provider {
+                config.chat_provider = Some(route);
+            }
+            match build_cli_agent(config) {
                 Ok(a) => {
                     *agent = Some(a);
                     format!("Switched to model: {name}")
@@ -230,7 +238,7 @@ async fn handle_login(config: &mut Config, agent: &mut Option<Agent>) -> String 
     match Config::load_or_init().await {
         Ok(mut reloaded) => {
             reloaded.action_dir = config.action_dir.clone();
-            match Agent::from_config(&reloaded) {
+            match build_cli_agent(&reloaded) {
                 Ok(rebuilt) => {
                     *config = reloaded;
                     *agent = Some(rebuilt);
@@ -261,6 +269,36 @@ async fn handle_logout(config: &mut Config, agent: &mut Option<Agent>) -> String
     }
 }
 
+fn build_cli_agent(config: &Config) -> Result<Agent> {
+    let mut agent = Agent::from_config(config)?;
+    let session_name = fresh_cli_session_name();
+    agent.set_agent_definition_name(session_name.clone());
+    agent.set_event_context(session_name, "cli");
+    Ok(agent)
+}
+
+fn fresh_cli_session_name() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("orchestrator_cli_{}_{}", std::process::id(), nanos)
+}
+
+fn rewrite_chat_provider_model(current: &str, model: &str) -> Option<String> {
+    let current = current.trim();
+    let model = model.trim();
+    if current.is_empty() || model.is_empty() {
+        return None;
+    }
+    let (provider, _) = current.split_once(':')?;
+    let provider = provider.trim();
+    if provider.is_empty() {
+        return None;
+    }
+    Some(format!("{provider}:{model}"))
+}
+
 fn agent_not_ready_message() -> String {
     format!("Agent is not ready yet.\n\n{}", login_instructions())
 }
@@ -288,6 +326,30 @@ fn format_status(config: &Config) -> String {
     lines.push(format!("Workspace: {}", config.workspace_dir.display()));
     lines.push(format!("Action dir: {}", config.action_dir.display()));
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rewrite_chat_provider_model;
+
+    #[test]
+    fn rewrite_chat_provider_model_preserves_provider_prefix() {
+        assert_eq!(
+            rewrite_chat_provider_model("openai:gpt-4o", "gpt-5"),
+            Some("openai:gpt-5".to_string())
+        );
+        assert_eq!(
+            rewrite_chat_provider_model(" ollama:llama3 ", " qwen2.5 "),
+            Some("ollama:qwen2.5".to_string())
+        );
+    }
+
+    #[test]
+    fn rewrite_chat_provider_model_leaves_unqualified_routes_alone() {
+        assert_eq!(rewrite_chat_provider_model("cloud", "gpt-5"), None);
+        assert_eq!(rewrite_chat_provider_model("", "gpt-5"), None);
+        assert_eq!(rewrite_chat_provider_model("openai:gpt-4o", " "), None);
+    }
 }
 
 async fn handle_list_threads(config: &Config) -> String {
