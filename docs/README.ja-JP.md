@@ -63,7 +63,7 @@ OpenHuman は、ほとんどのアシスタントが持っていない 3 つの�
 
 ### 🧠 脳
 
-- **[Memory Tree](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian Wiki](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**: あなたのデータはスコアリングされた Markdown ツリーへ圧縮されてあなたのマシン上の SQLite に保存され、開いて編集できる [Obsidian ボルト](https://obsidian.md)としてミラーリングされます。ベクトルスープのブラックボックスではありません。
+- **[Memory Tree](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian Wiki](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**: あなたのデータはスコアリングされた Markdown ツリーへ圧縮されてあなたのマシン上の SQLite に保存され、開いて編集できる [Obsidian ボルト](https://x.com/karpathy/status/2039805659525644595)としてミラーリングされます。ベクトルスープのブラックボックスではありません。
 - **[100+ の OAuth 統合、5,000+ の MCP サーバー、90,000+ の Skills](https://tinyhumans.gitbook.io/openhuman/features/integrations)**: Gmail、Notion、GitHub、Slack などのスタックにワンクリックで接続。[自動取得](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki/auto-fetch)が 20 分ごとに脳に栄養を与えるので、今朝の時点で明日のコンテキストを持っています。
 - **[サブコンシャス](https://tinyhumans.gitbook.io/openhuman/features/subconscious)**: あなたの世界の差分を取り、ゴールを前進させ、モーニングブリーフィングを書くバックグラウンドループです。あなたが入力をやめた後も思考は続きます。
 - **[Goals & Todos](https://tinyhumans.gitbook.io/openhuman/features/goals-and-todos)**: 長期ゴール、スレッドごとの永続ゴール、そして会話ごとの共有かんばんボード。
@@ -92,7 +92,7 @@ OpenHuman は、ほとんどのアシスタントが持っていない 3 つの�
 
 ## コンテキストを数週間ではなく数分で
 
-OpenHuman は、数分であなたのことを理解する初めてのエージェントハーネスです。[Karpathy 氏の LLM ナレッジベース](https://karpathy.ai/)にインスパイアされました。ほとんどのエージェントは冷えた状態から始まります。Hermes はあなたの作業を見て学習し、OpenClaw はプラグインがコンテキストを運び込むのを待ちます。いずれにせよ、エージェントがあなたのスタックを十分理解して本当に役立つようになるまで、数日から数週間を費やすことになります。
+OpenHuman は、数分であなたのことを理解する初めてのエージェントハーネスです。[Karpathy 氏の LLM ナレッジベース](https://x.com/karpathy/status/2039805659525644595)にインスパイアされました。ほとんどのエージェントは冷えた状態から始まります。Hermes はあなたの作業を見て学習し、OpenClaw はプラグインがコンテキストを運び込むのを待ちます。いずれにせよ、エージェントがあなたのスタックを十分理解して本当に役立つようになるまで、数日から数週間を費やすことになります。
 
 <p align="center">
  <img src="../gitbooks/.gitbook/assets/memory.png" alt="OpenHuman のコンテキスト構築図">
