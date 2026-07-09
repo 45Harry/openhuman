@@ -53,8 +53,13 @@ fn run_interactive_session() -> Result<()> {
         .block_on(Config::load_or_init())
         .map_err(|e| anyhow!("config load failed: {e}"))?;
     config.action_dir = std::env::current_dir().map_err(|e| anyhow!("failed to get cwd: {e}"))?;
-    let mut agent = Agent::from_config(&config)
-        .map_err(|e| anyhow!("agent init failed ({e}); run `openhuman login` first"))?;
+    let mut agent = match Agent::from_config(&config) {
+        Ok(agent) => Some(agent),
+        Err(e) => {
+            log::debug!("[chat_cli] agent init failed before TUI start: {e}");
+            None
+        }
+    };
 
     let (tx_input, rx_input) = mpsc::channel::<String>();
     let (tx_cmd, rx_cmd) = mpsc::channel::<AgentCmd>();
@@ -64,6 +69,9 @@ fn run_interactive_session() -> Result<()> {
         .default_model
         .clone()
         .unwrap_or_else(|| "unknown".into());
+    if agent.is_none() {
+        let _ = tx_resp.send(agent_not_ready_message());
+    }
     let tui_thread = std::thread::spawn(move || {
         crate::core::tui::run_tui(tx_input, tx_cmd, rx_resp, &initial_model)
     });
@@ -74,12 +82,21 @@ fn run_interactive_session() -> Result<()> {
                 if msg == "/exit" || msg == "/quit" {
                     break;
                 }
-                match with_origin(AgentTurnOrigin::Cli, agent.run_single(&msg)).await {
-                    Ok(response) => {
-                        let _ = tx_resp.send(response);
+                match agent.as_mut() {
+                    Some(active_agent) => {
+                        match with_origin(AgentTurnOrigin::Cli, active_agent.run_single(&msg)).await
+                        {
+                            Ok(response) => {
+                                let _ = tx_resp.send(response);
+                            }
+                            Err(e) => {
+                                log::debug!("[chat_cli] agent turn failed: {e}");
+                                let _ = tx_resp.send(format!("Error: {e}"));
+                            }
+                        }
                     }
-                    Err(e) => {
-                        let _ = tx_resp.send(format!("Error: {e}"));
+                    None => {
+                        let _ = tx_resp.send(agent_not_ready_message());
                     }
                 }
             }
@@ -102,22 +119,29 @@ fn run_interactive_session() -> Result<()> {
     Ok(())
 }
 
-async fn handle_cmd(cmd: AgentCmd, config: &mut Config, agent: &mut Agent) -> String {
+async fn handle_cmd(cmd: AgentCmd, config: &mut Config, agent: &mut Option<Agent>) -> String {
     match cmd {
         AgentCmd::SwitchModel(name) => handle_switch_model(config, agent, name).await,
-        AgentCmd::Login => handle_login().await,
-        AgentCmd::Logout => handle_logout(config).await,
+        AgentCmd::Login => handle_login(config, agent).await,
+        AgentCmd::Logout => handle_logout(config, agent).await,
         AgentCmd::Status => format_status(config),
         AgentCmd::ListThreads => handle_list_threads(config).await,
         AgentCmd::ListMemory => handle_list_memory().await,
         AgentCmd::ListFiles => handle_list_files().await,
         AgentCmd::ShowConfig => format_config(config),
         AgentCmd::ShowUsage => handle_usage(config).await,
-        AgentCmd::ListTools => list_agent_tools(agent),
+        AgentCmd::ListTools => match agent {
+            Some(active_agent) => list_agent_tools(active_agent),
+            None => agent_not_ready_message(),
+        },
     }
 }
 
-async fn handle_switch_model(config: &mut Config, agent: &mut Agent, name: String) -> String {
+async fn handle_switch_model(
+    config: &mut Config,
+    agent: &mut Option<Agent>,
+    name: String,
+) -> String {
     match load_and_apply_model_settings(ModelSettingsPatch {
         default_model: Some(name.clone()),
         ..Default::default()
@@ -128,25 +152,61 @@ async fn handle_switch_model(config: &mut Config, agent: &mut Agent, name: Strin
             config.default_model = Some(name.clone());
             match Agent::from_config(config) {
                 Ok(a) => {
-                    *agent = a;
+                    *agent = Some(a);
                     format!("Switched to model: {name}")
                 }
-                Err(e) => format!("Model switch failed: {e}"),
+                Err(e) => {
+                    log::debug!("[chat_cli] agent rebuild after model switch failed: {e}");
+                    *agent = None;
+                    format!("Model switch failed: {e}")
+                }
             }
         }
         Err(e) => format!("Model switch failed: {e}"),
     }
 }
 
-async fn handle_login() -> String {
-    "To log in, get your API token from the OpenHuman app and run:\n  openhuman login <token>\n\nOr set OPENHUMAN_API_KEY in your environment.".into()
+async fn handle_login(config: &mut Config, agent: &mut Option<Agent>) -> String {
+    match Config::load_or_init().await {
+        Ok(mut reloaded) => {
+            reloaded.action_dir = config.action_dir.clone();
+            match Agent::from_config(&reloaded) {
+                Ok(rebuilt) => {
+                    *config = reloaded;
+                    *agent = Some(rebuilt);
+                    "Login state refreshed. Agent is ready.".into()
+                }
+                Err(e) => {
+                    log::debug!("[chat_cli] login refresh did not initialize agent: {e}");
+                    *config = reloaded;
+                    *agent = None;
+                    format!("{}\n\nLast error: {e}", login_instructions())
+                }
+            }
+        }
+        Err(e) => {
+            log::debug!("[chat_cli] config reload during login failed: {e}");
+            format!("{}\n\nConfig reload failed: {e}", login_instructions())
+        }
+    }
 }
 
-async fn handle_logout(config: &mut Config) -> String {
+async fn handle_logout(config: &mut Config, agent: &mut Option<Agent>) -> String {
     match clear_session(config).await {
-        Ok(_) => "Logged out. Session cleared.".into(),
+        Ok(_) => {
+            *agent = None;
+            "Logged out. Session cleared.".into()
+        }
         Err(e) => format!("Logout failed: {e}"),
     }
+}
+
+fn agent_not_ready_message() -> String {
+    format!("Agent is not ready yet.\n\n{}", login_instructions())
+}
+
+fn login_instructions() -> &'static str {
+    "To log in, get your API token from the OpenHuman app and run:\n  openhuman login <token>\n\nOr set OPENHUMAN_API_KEY in your environment, then use /login here to refresh the session."
 }
 
 fn format_status(config: &Config) -> String {
