@@ -5,22 +5,18 @@ use std::sync::mpsc;
 use anyhow::{anyhow, Result};
 use console::style;
 
-use crate::openhuman::agent::turn_origin::{AgentTurnOrigin, with_origin};
+use crate::core::tui::AgentCmd;
+use crate::openhuman::agent::turn_origin::{with_origin, AgentTurnOrigin};
 use crate::openhuman::agent::Agent;
-use crate::openhuman::config::rpc::load_and_apply_model_settings;
 use crate::openhuman::config::ops::ModelSettingsPatch;
+use crate::openhuman::config::rpc::load_and_apply_model_settings;
 use crate::openhuman::config::Config;
+use crate::openhuman::cost::{try_global, CostTracker};
 use crate::openhuman::credentials::ops::clear_session;
 use crate::openhuman::credentials::session_support::build_session_state;
-use crate::openhuman::cost::{try_global, CostTracker};
-use crate::openhuman::memory::ops::{
-    ai_list_memory_files, memory_list_namespaces,
-};
-use crate::openhuman::memory::rpc_models::{
-    EmptyRequest, ListMemoryFilesRequest,
-};
+use crate::openhuman::memory::ops::{ai_list_memory_files, memory_list_namespaces};
+use crate::openhuman::memory::rpc_models::{EmptyRequest, ListMemoryFilesRequest};
 use crate::openhuman::memory_conversations::list_threads;
-use crate::core::tui::AgentCmd;
 
 pub fn run_chat_command(args: &[String]) -> Result<()> {
     if args.iter().any(|a| a == "-h" || a == "--help") {
@@ -56,8 +52,7 @@ fn run_interactive_session() -> Result<()> {
     let mut config = rt
         .block_on(Config::load_or_init())
         .map_err(|e| anyhow!("config load failed: {e}"))?;
-    config.action_dir = std::env::current_dir()
-        .map_err(|e| anyhow!("failed to get cwd: {e}"))?;
+    config.action_dir = std::env::current_dir().map_err(|e| anyhow!("failed to get cwd: {e}"))?;
     let mut agent = Agent::from_config(&config)
         .map_err(|e| anyhow!("agent init failed ({e}); run `openhuman login` first"))?;
 
@@ -65,8 +60,13 @@ fn run_interactive_session() -> Result<()> {
     let (tx_cmd, rx_cmd) = mpsc::channel::<AgentCmd>();
     let (tx_resp, rx_resp) = mpsc::channel::<String>();
 
-    let initial_model = config.default_model.clone().unwrap_or_else(|| "unknown".into());
-    let tui_thread = std::thread::spawn(move || super::tui::run_tui(tx_input, tx_cmd, rx_resp, &initial_model));
+    let initial_model = config
+        .default_model
+        .clone()
+        .unwrap_or_else(|| "unknown".into());
+    let tui_thread = std::thread::spawn(move || {
+        crate::core::tui::run_tui(tx_input, tx_cmd, rx_resp, &initial_model)
+    });
 
     rt.block_on(async {
         loop {
@@ -259,10 +259,7 @@ fn format_config(config: &Config) -> String {
         "Inference URL: {}",
         config.inference_url.as_deref().unwrap_or("default")
     ));
-    lines.push(format!(
-        "Temperature: {}",
-        config.default_temperature
-    ));
+    lines.push(format!("Temperature: {}", config.default_temperature));
     lines.push(format!(
         "Output language: {}",
         config.output_language.as_deref().unwrap_or("default")
@@ -273,7 +270,9 @@ fn format_config(config: &Config) -> String {
 
 async fn handle_usage(config: &Config) -> String {
     let tracker = try_global().or_else(|| {
-        CostTracker::new(config.cost.clone(), &config.workspace_dir).ok().map(std::sync::Arc::new)
+        CostTracker::new(config.cost.clone(), &config.workspace_dir)
+            .ok()
+            .map(std::sync::Arc::new)
     });
     match tracker {
         Some(t) => match t.get_daily_history(7) {

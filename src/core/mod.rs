@@ -12,7 +12,6 @@ pub mod auth;
 pub mod autocomplete_cli_adapter;
 pub mod chat_cli;
 pub mod cli;
-pub mod tui;
 pub mod dispatch;
 pub mod event_bind_tokens;
 pub mod event_bus;
@@ -26,6 +25,7 @@ pub mod runtime;
 pub mod shutdown;
 pub mod socketio;
 pub mod subconscious_cli;
+pub mod tui;
 pub mod types;
 
 /// Canonical function contract for domain controllers.

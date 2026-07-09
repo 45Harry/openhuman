@@ -4,11 +4,11 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    Frame,
 };
 
 const CYAN: Color = Color::Rgb(0, 200, 200);
@@ -18,9 +18,15 @@ const BORDER: Color = Color::Rgb(40, 40, 55);
 
 pub enum AgentCmd {
     SwitchModel(String),
-    Login, Logout, Status,
-    ListThreads, ListMemory, ListFiles,
-    ShowConfig, ShowUsage, ListTools,
+    Login,
+    Logout,
+    Status,
+    ListThreads,
+    ListMemory,
+    ListFiles,
+    ShowConfig,
+    ShowUsage,
+    ListTools,
 }
 
 struct ChatMsg {
@@ -59,7 +65,11 @@ const CMDS: &[(&str, &str)] = &[
 ];
 
 const MODELS: &[&str] = &[
-    "gpt-4o", "gpt-4o-mini", "claude-sonnet-4", "claude-haiku", "gemini-2.5-pro",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "claude-sonnet-4",
+    "claude-haiku",
+    "gemini-2.5-pro",
 ];
 
 pub fn run_tui(
@@ -103,36 +113,44 @@ pub fn run_tui(
     let tick = Duration::from_millis(50);
     let mut last_tick = Instant::now();
 
-    let res: Result<()> = (|| {
-        loop {
-            terminal.draw(|f| render(f, &app))?;
+    let res: Result<()> = (|| loop {
+        terminal.draw(|f| render(f, &app))?;
 
-            if let Ok(response) = rx_resp.try_recv() {
-                app.msgs.push(ChatMsg { sender: "ai".into(), content: response.clone() });
-                if let Some(name) = response.strip_prefix("Switched to model: ") {
-                    app.model_name = name.to_string();
-                }
-                app.scroll_offset = 0;
-                app.thinking = false;
+        if let Ok(response) = rx_resp.try_recv() {
+            app.msgs.push(ChatMsg {
+                sender: "ai".into(),
+                content: response.clone(),
+            });
+            if let Some(name) = response.strip_prefix("Switched to model: ") {
+                app.model_name = name.to_string();
             }
+            app.scroll_offset = 0;
+            app.thinking = false;
+        }
 
-            let timeout = tick.saturating_sub(last_tick.elapsed());
-            if event::poll(timeout)? {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind != KeyEventKind::Press { continue; }
-                    match handle_key(key, &mut app, &tx_input, &tx_cmd) {
-                        Action::Continue => {}
-                        Action::Quit => return Ok(()),
-                        Action::Send(msg) => {
-                            app.msgs.push(ChatMsg { sender: "you".into(), content: msg.clone() });
-                            app.scroll_offset = 0;
-                            app.thinking = true;
-                            let _ = tx_input.send(msg);
-                        }
+        let timeout = tick.saturating_sub(last_tick.elapsed());
+        if event::poll(timeout)? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+                match handle_key(key, &mut app, &tx_input, &tx_cmd) {
+                    Action::Continue => {}
+                    Action::Quit => return Ok(()),
+                    Action::Send(msg) => {
+                        app.msgs.push(ChatMsg {
+                            sender: "you".into(),
+                            content: msg.clone(),
+                        });
+                        app.scroll_offset = 0;
+                        app.thinking = true;
+                        let _ = tx_input.send(msg);
                     }
                 }
             }
-            if last_tick.elapsed() >= tick { last_tick = Instant::now(); }
+        }
+        if last_tick.elapsed() >= tick {
+            last_tick = Instant::now();
         }
     })();
 
@@ -143,7 +161,9 @@ pub fn run_tui(
 }
 
 enum Action {
-    Continue, Quit, Send(String),
+    Continue,
+    Quit,
+    Send(String),
 }
 
 fn handle_key(
@@ -154,9 +174,15 @@ fn handle_key(
 ) -> Action {
     if app.model_popup {
         match key.code {
-            KeyCode::Esc => { app.model_popup = false; }
-            KeyCode::Up => { app.model_idx = app.model_idx.saturating_sub(1); }
-            KeyCode::Down => { app.model_idx = app.model_idx.saturating_add(1).min(app.models.len() - 1); }
+            KeyCode::Esc => {
+                app.model_popup = false;
+            }
+            KeyCode::Up => {
+                app.model_idx = app.model_idx.saturating_sub(1);
+            }
+            KeyCode::Down => {
+                app.model_idx = app.model_idx.saturating_add(1).min(app.models.len() - 1);
+            }
             KeyCode::Enter => {
                 if app.model_idx < app.models.len() {
                     let model = app.models[app.model_idx].clone();
@@ -172,9 +198,16 @@ fn handle_key(
 
     if app.menu {
         match key.code {
-            KeyCode::Esc | KeyCode::Char('/') => { app.menu = false; return Action::Continue; }
-            KeyCode::Up => { app.menu_idx = app.menu_idx.saturating_sub(1); }
-            KeyCode::Down => { app.menu_idx = app.menu_idx.saturating_add(1); }
+            KeyCode::Esc | KeyCode::Char('/') => {
+                app.menu = false;
+                return Action::Continue;
+            }
+            KeyCode::Up => {
+                app.menu_idx = app.menu_idx.saturating_sub(1);
+            }
+            KeyCode::Down => {
+                app.menu_idx = app.menu_idx.saturating_add(1);
+            }
             KeyCode::Enter => {
                 let filtered = filtered_cmds(&app.input);
                 if app.menu_idx < filtered.len() {
@@ -227,21 +260,48 @@ fn handle_key(
                 app.cursor -= prev.len_utf8();
                 app.input.remove(app.cursor);
             }
-            if app.input.is_empty() { app.menu = false; }
+            if app.input.is_empty() {
+                app.menu = false;
+            }
             Action::Continue
         }
-        KeyCode::Delete => { if app.cursor < app.input.len() { app.input.remove(app.cursor); } Action::Continue }
-        KeyCode::Left => { if let Some(prev) = app.input[..app.cursor].chars().next_back() { app.cursor -= prev.len_utf8(); } Action::Continue }
-        KeyCode::Right => { if let Some(next) = app.input[app.cursor..].chars().next() { app.cursor += next.len_utf8(); } Action::Continue }
-        KeyCode::Home => { app.cursor = 0; Action::Continue }
-        KeyCode::End => { app.cursor = app.input.len(); Action::Continue }
+        KeyCode::Delete => {
+            if app.cursor < app.input.len() {
+                app.input.remove(app.cursor);
+            }
+            Action::Continue
+        }
+        KeyCode::Left => {
+            if let Some(prev) = app.input[..app.cursor].chars().next_back() {
+                app.cursor -= prev.len_utf8();
+            }
+            Action::Continue
+        }
+        KeyCode::Right => {
+            if let Some(next) = app.input[app.cursor..].chars().next() {
+                app.cursor += next.len_utf8();
+            }
+            Action::Continue
+        }
+        KeyCode::Home => {
+            app.cursor = 0;
+            Action::Continue
+        }
+        KeyCode::End => {
+            app.cursor = app.input.len();
+            Action::Continue
+        }
         KeyCode::Enter => {
             let text = app.input.trim().to_string();
             app.input.clear();
             app.cursor = 0;
             app.menu = false;
-            if text.is_empty() { return Action::Continue; }
-            if text == "/exit" || text == "/quit" { return Action::Quit; }
+            if text.is_empty() {
+                return Action::Continue;
+            }
+            if text == "/exit" || text == "/quit" {
+                return Action::Quit;
+            }
             if text == "/help" {
                 cmds_list(app);
                 return Action::Continue;
@@ -259,15 +319,42 @@ fn handle_key(
             if text.starts_with('/') {
                 let cmd = text.trim_start_matches('/').trim_start().to_string();
                 let sent = match cmd.as_str() {
-                    "login" => { let _ = tx_cmd.send(AgentCmd::Login); true }
-                    "logout" => { let _ = tx_cmd.send(AgentCmd::Logout); true }
-                    "status" => { let _ = tx_cmd.send(AgentCmd::Status); true }
-                    "threads" => { let _ = tx_cmd.send(AgentCmd::ListThreads); true }
-                    "memory" => { let _ = tx_cmd.send(AgentCmd::ListMemory); true }
-                    "files" => { let _ = tx_cmd.send(AgentCmd::ListFiles); true }
-                    "config" => { let _ = tx_cmd.send(AgentCmd::ShowConfig); true }
-                    "usage" => { let _ = tx_cmd.send(AgentCmd::ShowUsage); true }
-                    "tools" => { let _ = tx_cmd.send(AgentCmd::ListTools); true }
+                    "login" => {
+                        let _ = tx_cmd.send(AgentCmd::Login);
+                        true
+                    }
+                    "logout" => {
+                        let _ = tx_cmd.send(AgentCmd::Logout);
+                        true
+                    }
+                    "status" => {
+                        let _ = tx_cmd.send(AgentCmd::Status);
+                        true
+                    }
+                    "threads" => {
+                        let _ = tx_cmd.send(AgentCmd::ListThreads);
+                        true
+                    }
+                    "memory" => {
+                        let _ = tx_cmd.send(AgentCmd::ListMemory);
+                        true
+                    }
+                    "files" => {
+                        let _ = tx_cmd.send(AgentCmd::ListFiles);
+                        true
+                    }
+                    "config" => {
+                        let _ = tx_cmd.send(AgentCmd::ShowConfig);
+                        true
+                    }
+                    "usage" => {
+                        let _ = tx_cmd.send(AgentCmd::ShowUsage);
+                        true
+                    }
+                    "tools" => {
+                        let _ = tx_cmd.send(AgentCmd::ListTools);
+                        true
+                    }
                     other => {
                         app.msgs.push(ChatMsg {
                             sender: "system".into(),
@@ -276,13 +363,23 @@ fn handle_key(
                         false
                     }
                 };
-                if sent { app.thinking = true; }
+                if sent {
+                    app.thinking = true;
+                }
                 return Action::Continue;
             }
             Action::Send(text)
         }
-        KeyCode::Tab => { app.menu = !app.menu; app.menu_idx = 0; Action::Continue }
-        KeyCode::Esc => { app.menu = false; app.model_popup = false; Action::Continue }
+        KeyCode::Tab => {
+            app.menu = !app.menu;
+            app.menu_idx = 0;
+            Action::Continue
+        }
+        KeyCode::Esc => {
+            app.menu = false;
+            app.model_popup = false;
+            Action::Continue
+        }
         _ => Action::Continue,
     }
 }
@@ -299,9 +396,13 @@ fn cmds_list(app: &mut App) {
 }
 
 fn filtered_cmds(input: &str) -> Vec<&'static (&'static str, &'static str)> {
-    if input.len() <= 1 { return CMDS.iter().collect(); }
+    if input.len() <= 1 {
+        return CMDS.iter().collect();
+    }
     let prefix = input[1..].to_lowercase();
-    CMDS.iter().filter(move |(n, _)| n.starts_with(&prefix)).collect()
+    CMDS.iter()
+        .filter(move |(n, _)| n.starts_with(&prefix))
+        .collect()
 }
 
 fn render(f: &mut Frame, app: &App) {
@@ -321,8 +422,12 @@ fn render(f: &mut Frame, app: &App) {
     render_status(f, app, chunks[2]);
     render_input(f, app, chunks[3]);
 
-    if app.menu { render_menu_popup(f, app, chunks[1]); }
-    if app.model_popup { render_model_popup(f, app, chunks[1]); }
+    if app.menu {
+        render_menu_popup(f, app, chunks[1]);
+    }
+    if app.model_popup {
+        render_model_popup(f, app, chunks[1]);
+    }
 }
 
 fn logo_lines() -> Vec<Line<'static>> {
@@ -332,9 +437,15 @@ fn logo_lines() -> Vec<Line<'static>> {
         "▐▌ ▐▌█▄▄▄▀ ▝▚▄▄▖█   █ ▐▛▀▜▌     █   █      █   █",
         "▝▚▄▞▘█                ▐▌ ▐▌",
         "     ▀",
-    ].iter().map(|s| {
-        Line::from(Span::styled(s.to_string(), Style::default().fg(CYAN).add_modifier(Modifier::BOLD)))
-    }).collect()
+    ]
+    .iter()
+    .map(|s| {
+        Line::from(Span::styled(
+            s.to_string(),
+            Style::default().fg(CYAN).add_modifier(Modifier::BOLD),
+        ))
+    })
+    .collect()
 }
 
 fn render_logo(f: &mut Frame, area: Rect) {
@@ -355,7 +466,9 @@ fn render_msgs(f: &mut Frame, app: &App, area: Rect) {
     let items = msgs_to_items(app);
     let visible_count = inner.height as usize;
     let total = items.len();
-    if total == 0 { return; }
+    if total == 0 {
+        return;
+    }
 
     let max_offset = total.saturating_sub(visible_count);
     let offset = app.scroll_offset.min(max_offset);
@@ -363,7 +476,10 @@ fn render_msgs(f: &mut Frame, app: &App, area: Rect) {
 
     let end = (start + visible_count).min(total);
     let visible: Vec<ListItem> = items[start..end].to_vec();
-    f.render_widget(List::new(visible).style(Style::default().bg(DARK_BG)), inner);
+    f.render_widget(
+        List::new(visible).style(Style::default().bg(DARK_BG)),
+        inner,
+    );
 }
 
 fn msgs_to_items(app: &App) -> Vec<ListItem<'static>> {
@@ -390,10 +506,13 @@ fn msgs_to_items(app: &App) -> Vec<ListItem<'static>> {
 }
 
 fn render_status(f: &mut Frame, app: &App, area: Rect) {
-    let msg = format!(" {}  Model: {}  |  Ctrl+C to quit  |  /  for menu ", 
-        ansi_str("●", Color::Green), app.model_name);
-    let para = Paragraph::new(Text::raw(msg))
-        .style(Style::default().bg(SURFACE).fg(Color::DarkGray));
+    let msg = format!(
+        " {}  Model: {}  |  Ctrl+C to quit  |  /  for menu ",
+        ansi_str("●", Color::Green),
+        app.model_name
+    );
+    let para =
+        Paragraph::new(Text::raw(msg)).style(Style::default().bg(SURFACE).fg(Color::DarkGray));
     f.render_widget(para, area);
 }
 
@@ -406,13 +525,25 @@ fn render_input(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(block, area);
 
     let (text, style) = if app.model_popup {
-        (" Select a model...  (↑↓ navigate, Enter select, Esc cancel)".into(), Style::default().fg(Color::Yellow).bg(SURFACE))
+        (
+            " Select a model...  (↑↓ navigate, Enter select, Esc cancel)".into(),
+            Style::default().fg(Color::Yellow).bg(SURFACE),
+        )
     } else if app.thinking {
-        (format!(" {} ◐ thinking...", app.input), Style::default().fg(Color::Yellow).bg(SURFACE))
+        (
+            format!(" {} ◐ thinking...", app.input),
+            Style::default().fg(Color::Yellow).bg(SURFACE),
+        )
     } else if app.input.is_empty() && app.msgs.is_empty() {
-        (" Type a message or  /  for commands".into(), Style::default().fg(Color::DarkGray).bg(SURFACE))
+        (
+            " Type a message or  /  for commands".into(),
+            Style::default().fg(Color::DarkGray).bg(SURFACE),
+        )
     } else {
-        (format!(" {}", app.input), Style::default().fg(Color::White).bg(SURFACE))
+        (
+            format!(" {}", app.input),
+            Style::default().fg(Color::White).bg(SURFACE),
+        )
     };
 
     f.render_widget(Paragraph::new(text).style(style), inner);
@@ -424,55 +555,100 @@ fn render_input(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_menu_popup(f: &mut Frame, app: &App, area: Rect) {
     let cmds = filtered_cmds(&app.input);
-    if cmds.is_empty() { return; }
+    if cmds.is_empty() {
+        return;
+    }
     let w = 40.min(area.width.saturating_sub(4));
     let h = (cmds.len() as u16 + 2).min(area.height.saturating_sub(4));
     let x = area.x + (area.width - w) / 2;
     let y = area.y + 2;
-    let rect = Rect { x, y, width: w, height: h };
+    let rect = Rect {
+        x,
+        y,
+        width: w,
+        height: h,
+    };
     f.render_widget(Clear, rect);
 
-    let items: Vec<ListItem> = cmds.iter().enumerate().map(|(i, (name, desc))| {
-        let sel = i == app.menu_idx;
-        let st = if sel { Style::default().fg(Color::Black).bg(CYAN) } else { Style::default().fg(Color::White).bg(SURFACE) };
-        ListItem::new(format!("/{:<12} {}", name, desc)).style(st)
-    }).collect();
+    let items: Vec<ListItem> = cmds
+        .iter()
+        .enumerate()
+        .map(|(i, (name, desc))| {
+            let sel = i == app.menu_idx;
+            let st = if sel {
+                Style::default().fg(Color::Black).bg(CYAN)
+            } else {
+                Style::default().fg(Color::White).bg(SURFACE)
+            };
+            ListItem::new(format!("/{:<12} {}", name, desc)).style(st)
+        })
+        .collect();
     f.render_widget(
-        List::new(items).block(Block::default()
-            .borders(Borders::ALL).border_style(Style::default().fg(CYAN))
-            .title(" Commands ").title_style(Style::default().fg(CYAN).add_modifier(Modifier::BOLD))
-            .style(Style::default().bg(SURFACE))),
+        List::new(items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(CYAN))
+                .title(" Commands ")
+                .title_style(Style::default().fg(CYAN).add_modifier(Modifier::BOLD))
+                .style(Style::default().bg(SURFACE)),
+        ),
         rect,
     );
 }
 
 fn render_model_popup(f: &mut Frame, app: &App, area: Rect) {
-    if app.models.is_empty() { return; }
+    if app.models.is_empty() {
+        return;
+    }
     let w = 34.min(area.width.saturating_sub(4));
     let h = (app.models.len() as u16 + 2).min(area.height.saturating_sub(4));
     let x = area.x + (area.width - w) / 2;
     let y = area.y + 2;
-    let rect = Rect { x, y, width: w, height: h };
+    let rect = Rect {
+        x,
+        y,
+        width: w,
+        height: h,
+    };
     f.render_widget(Clear, rect);
 
-    let items: Vec<ListItem> = app.models.iter().enumerate().map(|(i, m)| {
-        let sel = i == app.model_idx;
-        let st = if sel { Style::default().fg(Color::Black).bg(CYAN) } else { Style::default().fg(Color::White).bg(SURFACE) };
-        ListItem::new(m.to_string()).style(st)
-    }).collect();
+    let items: Vec<ListItem> = app
+        .models
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let sel = i == app.model_idx;
+            let st = if sel {
+                Style::default().fg(Color::Black).bg(CYAN)
+            } else {
+                Style::default().fg(Color::White).bg(SURFACE)
+            };
+            ListItem::new(m.to_string()).style(st)
+        })
+        .collect();
     f.render_widget(
-        List::new(items).block(Block::default()
-            .borders(Borders::ALL).border_style(Style::default().fg(Color::Green))
-            .title(" Models ").title_style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
-            .style(Style::default().bg(SURFACE))),
+        List::new(items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green))
+                .title(" Models ")
+                .title_style(
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .style(Style::default().bg(SURFACE)),
+        ),
         rect,
     );
 }
 
 fn ansi_str(s: &str, color: Color) -> String {
     let code = match color {
-        Color::Green => "32", Color::Yellow => "33",
-        Color::Cyan => "36", Color::Gray | Color::DarkGray => "90",
+        Color::Green => "32",
+        Color::Yellow => "33",
+        Color::Cyan => "36",
+        Color::Gray | Color::DarkGray => "90",
         Color::White => "97",
         _ => "0",
     };
