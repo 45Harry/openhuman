@@ -63,6 +63,7 @@ fn run_interactive_session() -> Result<()> {
 
     let (tx_input, rx_input) = mpsc::channel::<String>();
     let (tx_cmd, rx_cmd) = mpsc::channel::<AgentCmd>();
+    let (tx_quit, rx_quit) = mpsc::channel::<()>();
     let (tx_resp, rx_resp) = mpsc::channel::<String>();
 
     let initial_model = config
@@ -73,11 +74,15 @@ fn run_interactive_session() -> Result<()> {
         let _ = tx_resp.send(agent_not_ready_message());
     }
     let tui_thread = std::thread::spawn(move || {
-        crate::core::tui::run_tui(tx_input, tx_cmd, rx_resp, &initial_model)
+        crate::core::tui::run_tui(tx_input, tx_cmd, tx_quit, rx_resp, &initial_model)
     });
 
     rt.block_on(async {
         loop {
+            if tui_requested_quit(&rx_quit) {
+                log::debug!("[chat_cli] TUI quit signal received; ending session");
+                break;
+            }
             match rx_input.try_recv() {
                 Ok(msg) => {
                     if msg == "/exit" || msg == "/quit" {
@@ -85,15 +90,24 @@ fn run_interactive_session() -> Result<()> {
                     }
                     match agent.as_mut() {
                         Some(active_agent) => {
-                            match with_origin(AgentTurnOrigin::Cli, active_agent.run_single(&msg))
-                                .await
-                            {
-                                Ok(response) => {
-                                    let _ = tx_resp.send(response);
+                            let turn =
+                                with_origin(AgentTurnOrigin::Cli, active_agent.run_single(&msg));
+                            tokio::pin!(turn);
+                            tokio::select! {
+                                result = &mut turn => {
+                                    match result {
+                                        Ok(response) => {
+                                            let _ = tx_resp.send(response);
+                                        }
+                                        Err(e) => {
+                                            log::debug!("[chat_cli] agent turn failed: {e}");
+                                            let _ = tx_resp.send(format!("Error: {e}"));
+                                        }
+                                    }
                                 }
-                                Err(e) => {
-                                    log::debug!("[chat_cli] agent turn failed: {e}");
-                                    let _ = tx_resp.send(format!("Error: {e}"));
+                                _ = wait_for_tui_quit(&rx_quit) => {
+                                    log::debug!("[chat_cli] TUI quit signal received during agent turn; cancelling session");
+                                    break;
                                 }
                             }
                         }
@@ -132,6 +146,22 @@ fn run_interactive_session() -> Result<()> {
     eprintln!("  {}  Session ended.", style("●").dim());
     eprintln!();
     Ok(())
+}
+
+fn tui_requested_quit(rx_quit: &mpsc::Receiver<()>) -> bool {
+    match rx_quit.try_recv() {
+        Ok(_) | Err(mpsc::TryRecvError::Disconnected) => true,
+        Err(mpsc::TryRecvError::Empty) => false,
+    }
+}
+
+async fn wait_for_tui_quit(rx_quit: &mpsc::Receiver<()>) {
+    loop {
+        if tui_requested_quit(rx_quit) {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
 }
 
 async fn handle_cmd(cmd: AgentCmd, config: &mut Config, agent: &mut Option<Agent>) -> String {
