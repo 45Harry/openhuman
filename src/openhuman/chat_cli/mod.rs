@@ -6,8 +6,14 @@ use anyhow::{anyhow, Result};
 use console::style;
 
 use crate::core::tui::AgentCmd;
+use crate::core::types::{approval_gate_boot_decision, HostKind};
 use crate::openhuman::agent::turn_origin::{with_origin, AgentTurnOrigin};
 use crate::openhuman::agent::Agent;
+use crate::openhuman::approval::gate::{record_boot_state, ApprovalGateBootState};
+use crate::openhuman::approval::{
+    parse_approval_reply, ApprovalChatContext, ApprovalDecision, ApprovalGate,
+    APPROVAL_CHAT_CONTEXT,
+};
 use crate::openhuman::config::ops::ModelSettingsPatch;
 use crate::openhuman::config::rpc::load_and_apply_model_settings;
 use crate::openhuman::config::Config;
@@ -52,8 +58,8 @@ fn run_interactive_session() -> Result<()> {
     let mut config = rt
         .block_on(Config::load_or_init())
         .map_err(|e| anyhow!("config load failed: {e}"))?;
-    config.action_dir = std::env::current_dir().map_err(|e| anyhow!("failed to get cwd: {e}"))?;
-    let mut agent = match Agent::from_config(&config) {
+    install_cli_approval_gate(&config);
+    let mut agent = match build_cli_agent(&config) {
         Ok(agent) => Some(agent),
         Err(e) => {
             log::debug!("[chat_cli] agent init failed before TUI start: {e}");
@@ -63,6 +69,7 @@ fn run_interactive_session() -> Result<()> {
 
     let (tx_input, rx_input) = mpsc::channel::<String>();
     let (tx_cmd, rx_cmd) = mpsc::channel::<AgentCmd>();
+    let (tx_quit, rx_quit) = mpsc::channel::<()>();
     let (tx_resp, rx_resp) = mpsc::channel::<String>();
 
     let initial_model = config
@@ -72,12 +79,18 @@ fn run_interactive_session() -> Result<()> {
     if agent.is_none() {
         let _ = tx_resp.send(agent_not_ready_message());
     }
+    let cli_thread_id = format!("cli-chat-{}", uuid::Uuid::new_v4());
+    let cli_client_id = "openhuman-cli".to_string();
     let tui_thread = std::thread::spawn(move || {
-        crate::core::tui::run_tui(tx_input, tx_cmd, rx_resp, &initial_model)
+        crate::core::tui::run_tui(tx_input, tx_cmd, tx_quit, rx_resp, &initial_model)
     });
 
     rt.block_on(async {
         loop {
+            if tui_requested_quit(&rx_quit) {
+                log::debug!("[chat_cli] TUI quit signal received; ending session");
+                break;
+            }
             match rx_input.try_recv() {
                 Ok(msg) => {
                     if msg == "/exit" || msg == "/quit" {
@@ -85,15 +98,49 @@ fn run_interactive_session() -> Result<()> {
                     }
                     match agent.as_mut() {
                         Some(active_agent) => {
-                            match with_origin(AgentTurnOrigin::Cli, active_agent.run_single(&msg))
-                                .await
-                            {
-                                Ok(response) => {
-                                    let _ = tx_resp.send(response);
-                                }
-                                Err(e) => {
-                                    log::debug!("[chat_cli] agent turn failed: {e}");
-                                    let _ = tx_resp.send(format!("Error: {e}"));
+                            let approval_ctx = ApprovalChatContext {
+                                thread_id: cli_thread_id.clone(),
+                                client_id: cli_client_id.clone(),
+                            };
+                            let origin = AgentTurnOrigin::WebChat {
+                                thread_id: cli_thread_id.clone(),
+                                client_id: cli_client_id.clone(),
+                                request_id: Some(format!("cli-turn-{}", uuid::Uuid::new_v4())),
+                            };
+                            let turn = with_origin(
+                                origin,
+                                APPROVAL_CHAT_CONTEXT
+                                    .scope(approval_ctx, active_agent.run_single(&msg)),
+                            );
+                            tokio::pin!(turn);
+                            loop {
+                                tokio::select! {
+                                    result = &mut turn => {
+                                        match result {
+                                            Ok(response) => {
+                                                let _ = tx_resp.send(response);
+                                            }
+                                            Err(e) => {
+                                                log::debug!("[chat_cli] agent turn failed: {e}");
+                                                let _ = tx_resp.send(format!("Error: {e}"));
+                                            }
+                                        }
+                                        break;
+                                    }
+                                    signal = wait_for_cli_approval_reply(
+                                        &rx_input,
+                                        &rx_quit,
+                                        &tx_resp,
+                                        &cli_thread_id,
+                                    ) => {
+                                        match signal {
+                                            CliTurnSignal::ApprovalHandled => continue,
+                                            CliTurnSignal::Quit => {
+                                                log::debug!("[chat_cli] TUI quit signal received during agent turn; cancelling session");
+                                                break;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -134,6 +181,92 @@ fn run_interactive_session() -> Result<()> {
     Ok(())
 }
 
+fn tui_requested_quit(rx_quit: &mpsc::Receiver<()>) -> bool {
+    match rx_quit.try_recv() {
+        Ok(_) | Err(mpsc::TryRecvError::Disconnected) => true,
+        Err(mpsc::TryRecvError::Empty) => false,
+    }
+}
+
+enum CliTurnSignal {
+    ApprovalHandled,
+    Quit,
+}
+
+async fn wait_for_cli_approval_reply(
+    rx_input: &mpsc::Receiver<String>,
+    rx_quit: &mpsc::Receiver<()>,
+    tx_resp: &mpsc::Sender<String>,
+    thread_id: &str,
+) -> CliTurnSignal {
+    let mut prompted_request_id: Option<String> = None;
+    loop {
+        if tui_requested_quit(rx_quit) {
+            return CliTurnSignal::Quit;
+        }
+
+        let Some(gate) = ApprovalGate::try_global() else {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            continue;
+        };
+        let Some(request_id) = gate.pending_for_thread(thread_id) else {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            continue;
+        };
+
+        if prompted_request_id.as_deref() != Some(request_id.as_str()) {
+            let _ = tx_resp.send(format_cli_approval_prompt(&gate, &request_id));
+            prompted_request_id = Some(request_id.clone());
+        }
+
+        match rx_input.try_recv() {
+            Ok(reply) => {
+                if reply == "/exit" || reply == "/quit" {
+                    return CliTurnSignal::Quit;
+                }
+                let Some(decision) = parse_approval_reply(&reply) else {
+                    let _ = tx_resp.send(
+                        "Approval pending. Reply yes/approve to allow once, or no/deny to block."
+                            .to_string(),
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    continue;
+                };
+                match gate.decide(&request_id, decision) {
+                    Ok(Some(row)) => {
+                        log::debug!(
+                            "[chat_cli] approval decision applied request_id={} tool={} decision={}",
+                            row.request_id,
+                            row.tool_name,
+                            decision.as_str()
+                        );
+                        let _ =
+                            tx_resp.send(format_cli_approval_decision(decision, &row.tool_name));
+                    }
+                    Ok(None) => {
+                        log::debug!(
+                            "[chat_cli] approval decision found no pending row request_id={request_id}"
+                        );
+                        let _ = tx_resp
+                            .send("Approval request was already resolved or expired.".to_string());
+                    }
+                    Err(err) => {
+                        log::debug!(
+                            "[chat_cli] approval decision failed request_id={request_id}: {err}"
+                        );
+                        let _ = tx_resp.send(format!("Approval error: {err}"));
+                    }
+                }
+                return CliTurnSignal::ApprovalHandled;
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Disconnected) => return CliTurnSignal::Quit,
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+}
+
 async fn handle_cmd(cmd: AgentCmd, config: &mut Config, agent: &mut Option<Agent>) -> String {
     match cmd {
         AgentCmd::NewConversation => handle_new_conversation(config, agent),
@@ -154,7 +287,7 @@ async fn handle_cmd(cmd: AgentCmd, config: &mut Config, agent: &mut Option<Agent
 }
 
 fn handle_new_conversation(config: &Config, agent: &mut Option<Agent>) -> String {
-    match Agent::from_config(config) {
+    match build_cli_agent(config) {
         Ok(rebuilt) => {
             *agent = Some(rebuilt);
             "Started a new conversation.".into()
@@ -172,15 +305,23 @@ async fn handle_switch_model(
     agent: &mut Option<Agent>,
     name: String,
 ) -> String {
+    let chat_provider = config
+        .chat_provider
+        .as_deref()
+        .and_then(|current| rewrite_chat_provider_model(current, &name));
     match load_and_apply_model_settings(ModelSettingsPatch {
         default_model: Some(name.clone()),
+        chat_provider: chat_provider.clone(),
         ..Default::default()
     })
     .await
     {
         Ok(_) => {
             config.default_model = Some(name.clone());
-            match Agent::from_config(config) {
+            if let Some(route) = chat_provider {
+                config.chat_provider = Some(route);
+            }
+            match build_cli_agent(config) {
                 Ok(a) => {
                     *agent = Some(a);
                     format!("Switched to model: {name}")
@@ -198,22 +339,19 @@ async fn handle_switch_model(
 
 async fn handle_login(config: &mut Config, agent: &mut Option<Agent>) -> String {
     match Config::load_or_init().await {
-        Ok(mut reloaded) => {
-            reloaded.action_dir = config.action_dir.clone();
-            match Agent::from_config(&reloaded) {
-                Ok(rebuilt) => {
-                    *config = reloaded;
-                    *agent = Some(rebuilt);
-                    "Login state refreshed. Agent is ready.".into()
-                }
-                Err(e) => {
-                    log::debug!("[chat_cli] login refresh did not initialize agent: {e}");
-                    *config = reloaded;
-                    *agent = None;
-                    format!("{}\n\nLast error: {e}", login_instructions())
-                }
+        Ok(reloaded) => match build_cli_agent(&reloaded) {
+            Ok(rebuilt) => {
+                *config = reloaded;
+                *agent = Some(rebuilt);
+                "Login state refreshed. Agent is ready.".into()
             }
-        }
+            Err(e) => {
+                log::debug!("[chat_cli] login refresh did not initialize agent: {e}");
+                *config = reloaded;
+                *agent = None;
+                format!("{}\n\nLast error: {e}", login_instructions())
+            }
+        },
         Err(e) => {
             log::debug!("[chat_cli] config reload during login failed: {e}");
             format!("{}\n\nConfig reload failed: {e}", login_instructions())
@@ -228,6 +366,96 @@ async fn handle_logout(config: &mut Config, agent: &mut Option<Agent>) -> String
             "Logged out. Session cleared.".into()
         }
         Err(e) => format!("Logout failed: {e}"),
+    }
+}
+
+fn install_cli_approval_gate(config: &Config) {
+    let env_override_requested = std::env::var("OPENHUMAN_APPROVAL_GATE")
+        .map(|v| {
+            let trimmed = v.trim();
+            trimmed == "0" || trimmed.eq_ignore_ascii_case("false")
+        })
+        .unwrap_or(false);
+    let decision = approval_gate_boot_decision(HostKind::Cli, env_override_requested);
+    record_boot_state(ApprovalGateBootState {
+        installed: decision.install_gate,
+        disabled_by_env: decision.gate_disabled_by_override,
+        override_ignored: decision.override_ignored,
+        host: HostKind::Cli.tag(),
+    });
+
+    if decision.install_gate {
+        let session_id = format!("session-{}", uuid::Uuid::new_v4());
+        let _ = ApprovalGate::init_global(config.clone(), session_id.clone());
+        log::info!(
+            "[chat_cli] approval gate installed for interactive terminal chat session_id={session_id}"
+        );
+    } else {
+        log::warn!(
+            "[chat_cli] approval gate disabled by OPENHUMAN_APPROVAL_GATE for interactive terminal chat"
+        );
+    }
+}
+
+fn build_cli_agent(config: &Config) -> Result<Agent> {
+    let mut agent = Agent::from_config(config)?;
+    let session_name = fresh_cli_session_name();
+    agent.set_agent_definition_name(session_name.clone());
+    agent.set_event_context(session_name, "cli");
+    Ok(agent)
+}
+
+fn fresh_cli_session_name() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("orchestrator_cli_{}_{}", std::process::id(), nanos)
+}
+
+fn rewrite_chat_provider_model(current: &str, model: &str) -> Option<String> {
+    let current = current.trim();
+    let model = model.trim();
+    if current.is_empty() || model.is_empty() {
+        return None;
+    }
+    let (provider, _) = current.split_once(':')?;
+    let provider = provider.trim();
+    if provider.is_empty() {
+        return None;
+    }
+    Some(format!("{provider}:{model}"))
+}
+
+fn format_cli_approval_prompt(gate: &ApprovalGate, request_id: &str) -> String {
+    match gate.list_pending() {
+        Ok(rows) => rows
+            .into_iter()
+            .find(|row| row.request_id == request_id)
+            .map(|row| {
+                format!(
+                    "Approval required for tool '{}': {}\nReply yes/approve to allow once, or no/deny to block.",
+                    row.tool_name, row.action_summary
+                )
+            })
+            .unwrap_or_else(|| {
+                "Approval required. Reply yes/approve to allow once, or no/deny to block."
+                    .to_string()
+            }),
+        Err(err) => {
+            log::debug!(
+                "[chat_cli] failed to load pending approval details request_id={request_id}: {err}"
+            );
+            "Approval required. Reply yes/approve to allow once, or no/deny to block.".to_string()
+        }
+    }
+}
+
+fn format_cli_approval_decision(decision: ApprovalDecision, tool_name: &str) -> String {
+    if decision.is_approve() {
+        format!("Approved '{tool_name}' once.")
+    } else {
+        format!("Denied '{tool_name}'.")
     }
 }
 
@@ -258,6 +486,43 @@ fn format_status(config: &Config) -> String {
     lines.push(format!("Workspace: {}", config.workspace_dir.display()));
     lines.push(format!("Action dir: {}", config.action_dir.display()));
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_cli_approval_decision, rewrite_chat_provider_model};
+    use crate::openhuman::approval::ApprovalDecision;
+
+    #[test]
+    fn rewrite_chat_provider_model_preserves_provider_prefix() {
+        assert_eq!(
+            rewrite_chat_provider_model("openai:gpt-4o", "gpt-5"),
+            Some("openai:gpt-5".to_string())
+        );
+        assert_eq!(
+            rewrite_chat_provider_model(" ollama:llama3 ", " qwen2.5 "),
+            Some("ollama:qwen2.5".to_string())
+        );
+    }
+
+    #[test]
+    fn rewrite_chat_provider_model_leaves_unqualified_routes_alone() {
+        assert_eq!(rewrite_chat_provider_model("cloud", "gpt-5"), None);
+        assert_eq!(rewrite_chat_provider_model("", "gpt-5"), None);
+        assert_eq!(rewrite_chat_provider_model("openai:gpt-4o", " "), None);
+    }
+
+    #[test]
+    fn cli_approval_decision_message_reflects_decision() {
+        assert_eq!(
+            format_cli_approval_decision(ApprovalDecision::ApproveOnce, "shell"),
+            "Approved 'shell' once."
+        );
+        assert_eq!(
+            format_cli_approval_decision(ApprovalDecision::Deny, "shell"),
+            "Denied 'shell'."
+        );
+    }
 }
 
 async fn handle_list_threads(config: &Config) -> String {

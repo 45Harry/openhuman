@@ -24,7 +24,8 @@ pub(crate) use dirs::default_root_dir_name_pub as default_root_dir_name;
 #[cfg(test)]
 pub(crate) use dirs::{
     resolve_config_dir_for_workspace, resolve_runtime_config_dirs,
-    resolve_runtime_config_dirs_with, ConfigResolutionSource,
+    resolve_runtime_config_dirs_with, ConfigResolutionSource, ACTION_DIR_ENV_VAR,
+    MEMORY_SYNC_INTERVAL_SECS_ENV_VAR,
 };
 // PathBuf and Config were in scope via `use super::*` in the original load.rs.
 #[cfg(test)]
@@ -32,7 +33,7 @@ pub(crate) use super::Config;
 #[cfg(test)]
 pub(crate) use dirs::ACTIVE_USER_STATE_FILE;
 #[cfg(test)]
-pub(crate) use env::ProcessEnvWithoutWorkspace;
+pub(crate) use env::{EnvLookup, ProcessEnvWithoutWorkspace};
 #[cfg(test)]
 pub(crate) use impl_load::parse_config_with_recovery;
 #[cfg(test)]

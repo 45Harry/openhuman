@@ -76,6 +76,7 @@ const MODELS: &[&str] = &[
 pub fn run_tui(
     tx_input: mpsc::Sender<String>,
     tx_cmd: mpsc::Sender<AgentCmd>,
+    tx_quit: mpsc::Sender<()>,
     rx_resp: mpsc::Receiver<String>,
     initial_model: &str,
 ) -> Result<()> {
@@ -137,7 +138,10 @@ pub fn run_tui(
                 }
                 match handle_key(key, &mut app, &tx_input, &tx_cmd) {
                     Action::Continue => {}
-                    Action::Quit => return Ok(()),
+                    Action::Quit => {
+                        let _ = tx_quit.send(());
+                        return Ok(());
+                    }
                     Action::Send(msg) => {
                         app.msgs.push(ChatMsg {
                             sender: "you".into(),
@@ -398,10 +402,11 @@ fn cmds_list(app: &mut App) {
 }
 
 fn filtered_cmds(input: &str) -> Vec<&'static (&'static str, &'static str)> {
-    if input.len() <= 1 {
+    let prefix = input.strip_prefix('/').unwrap_or(input);
+    if prefix.is_empty() {
         return CMDS.iter().collect();
     }
-    let prefix = input[1..].to_lowercase();
+    let prefix = prefix.to_lowercase();
     CMDS.iter()
         .filter(move |(n, _)| n.starts_with(&prefix))
         .collect()

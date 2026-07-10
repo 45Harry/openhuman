@@ -13,6 +13,8 @@ use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 
 use crate::openhuman::config::Config;
+#[cfg(not(target_os = "macos"))]
+use crate::openhuman::voice::hotkey::{self, ActivationMode, HotkeyEvent};
 
 // The rdev-based listener (non-macOS) resolves the hotkey combo + activation mode
 // against the cross-platform `hotkey` module. macOS uses a separate path and
