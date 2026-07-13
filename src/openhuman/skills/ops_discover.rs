@@ -221,9 +221,13 @@ fn user_roots(home: &Path) -> Vec<(PathBuf, RootKind)> {
     // roots are still scanned for back-compat with installs created before the
     // skills→workflows rename. Order matters: `workflows/` is scanned last so a
     // same-named entry there wins over a legacy `skills/` one.
+    //
+    // `.claude/skills/` is scanned for claude-code compatibility so both tools
+    // share the same skill definitions.
     vec![
         (home.join(".openhuman").join("skills"), RootKind::Skill),
         (home.join(".agents").join("skills"), RootKind::Skill),
+        (home.join(".claude").join("skills"), RootKind::Skill),
         (
             home.join(".openhuman").join("workflows"),
             RootKind::Workflow,
@@ -235,6 +239,7 @@ fn project_roots(workspace: &Path) -> Vec<(PathBuf, RootKind)> {
     vec![
         (workspace.join(".openhuman").join("skills"), RootKind::Skill),
         (workspace.join(".agents").join("skills"), RootKind::Skill),
+        (workspace.join(".claude").join("skills"), RootKind::Skill),
         (
             workspace.join(".openhuman").join("workflows"),
             RootKind::Workflow,

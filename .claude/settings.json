@@ -1,6 +1,40 @@
 {
+  "model": "qwen3:0.6b",
   "attribution": {
-    "commit": "",
-    "pr": ""
+    "commit": "Co-Authored-By: OpenHuman <openhuman@tinyhumans.ai>",
+    "pr": "Co-Authored-By: OpenHuman <openhuman@tinyhumans.ai>"
+  },
+  "language": "en",
+  "outputStyle": "full",
+  "autoMemoryEnabled": true,
+  "autoDreamEnabled": true,
+  "voiceEnabled": true,
+  "editorMode": "vim",
+  "diffTool": "auto",
+  "autoCompactEnabled": true,
+  "permissions": {
+    "allow": [
+      { "tool": "Bash", "command": "git *" },
+      { "tool": "Bash", "command": "npm *" },
+      { "tool": "Bash", "command": "pnpm *" },
+      { "tool": "Bash", "command": "cargo *" },
+      { "tool": "Read" },
+      { "tool": "Glob" },
+      { "tool": "Grep" },
+      { "tool": "FileRead" }
+    ],
+    "deny": [
+      { "tool": "Bash", "command": "rm -rf /" },
+      { "tool": "Bash", "command": "sudo *" },
+      { "tool": "Bash", "command": "chmod 777 *" }
+    ],
+    "ask": [
+      { "tool": "Bash", "command": "curl *" },
+      { "tool": "Bash", "command": "wget *" },
+      { "tool": "Write" },
+      { "tool": "Edit" },
+      { "tool": "Delete" }
+    ],
+    "defaultMode": "prompt"
   }
 }

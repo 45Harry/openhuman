@@ -1,1 +1,23 @@
-{ "mcpServers": { "alphahuman": { "type": "http", "url": "https://openhuman.readme.io/mcp" } } }
+{
+  "mcpServers": {
+    "openhuman-docs": {
+      "type": "http",
+      "url": "https://openhuman.readme.io/mcp"
+    },
+    "git": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-git"]
+    },
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-filesystem", "/home/harry"]
+    },
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-github"]
+    }
+  }
+}
