@@ -71,6 +71,7 @@ fn run_interactive_session() -> Result<()> {
     let (tx_cmd, rx_cmd) = mpsc::channel::<AgentCmd>();
     let (tx_quit, rx_quit) = mpsc::channel::<()>();
     let (tx_resp, rx_resp) = mpsc::channel::<String>();
+    let (tx_approval, rx_approval) = mpsc::channel::<String>();
 
     let initial_model = config
         .default_model
@@ -82,7 +83,14 @@ fn run_interactive_session() -> Result<()> {
     let cli_thread_id = format!("cli-chat-{}", uuid::Uuid::new_v4());
     let cli_client_id = "openhuman-cli".to_string();
     let tui_thread = std::thread::spawn(move || {
-        crate::core::tui::run_tui(tx_input, tx_cmd, tx_quit, rx_resp, &initial_model)
+        crate::core::tui::run_tui(
+            tx_input,
+            tx_cmd,
+            tx_quit,
+            tx_approval,
+            rx_resp,
+            &initial_model,
+        )
     });
 
     rt.block_on(async {
@@ -113,8 +121,17 @@ fn run_interactive_session() -> Result<()> {
                                     .scope(approval_ctx, active_agent.run_single(&msg)),
                             );
                             tokio::pin!(turn);
+                            let mut cancel_check = tokio::time::interval(
+                                std::time::Duration::from_millis(200),
+                            );
                             loop {
                                 tokio::select! {
+                                    _ = cancel_check.tick() => {
+                                        if tui_requested_quit(&rx_quit) {
+                                            log::debug!("[chat_cli] TUI quit during active turn; aborting");
+                                            break;
+                                        }
+                                    }
                                     result = &mut turn => {
                                         match result {
                                             Ok(response) => {
@@ -128,7 +145,7 @@ fn run_interactive_session() -> Result<()> {
                                         break;
                                     }
                                     signal = wait_for_cli_approval_reply(
-                                        &rx_input,
+                                        &rx_approval,
                                         &rx_quit,
                                         &tx_resp,
                                         &cli_thread_id,
@@ -194,7 +211,7 @@ enum CliTurnSignal {
 }
 
 async fn wait_for_cli_approval_reply(
-    rx_input: &mpsc::Receiver<String>,
+    rx_approval: &mpsc::Receiver<String>,
     rx_quit: &mpsc::Receiver<()>,
     tx_resp: &mpsc::Sender<String>,
     thread_id: &str,
@@ -215,11 +232,13 @@ async fn wait_for_cli_approval_reply(
         };
 
         if prompted_request_id.as_deref() != Some(request_id.as_str()) {
+            // Drain any stale input queued before this approval request
+            while rx_approval.try_recv().is_ok() {}
             let _ = tx_resp.send(format_cli_approval_prompt(&gate, &request_id));
             prompted_request_id = Some(request_id.clone());
         }
 
-        match rx_input.try_recv() {
+        match rx_approval.try_recv() {
             Ok(reply) => {
                 if reply == "/exit" || reply == "/quit" {
                     return CliTurnSignal::Quit;

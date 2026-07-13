@@ -77,6 +77,7 @@ pub fn run_tui(
     tx_input: mpsc::Sender<String>,
     tx_cmd: mpsc::Sender<AgentCmd>,
     tx_quit: mpsc::Sender<()>,
+    tx_approval: mpsc::Sender<String>,
     rx_resp: mpsc::Receiver<String>,
     initial_model: &str,
 ) -> Result<()> {
@@ -136,7 +137,7 @@ pub fn run_tui(
                 if key.kind != KeyEventKind::Press {
                     continue;
                 }
-                match handle_key(key, &mut app, &tx_input, &tx_cmd) {
+                match handle_key(key, &mut app, &tx_input, &tx_cmd, &tx_approval) {
                     Action::Continue => {}
                     Action::Quit => {
                         let _ = tx_quit.send(());
@@ -176,6 +177,7 @@ fn handle_key(
     app: &mut App,
     _tx_input: &mpsc::Sender<String>,
     tx_cmd: &mpsc::Sender<AgentCmd>,
+    tx_approval: &mpsc::Sender<String>,
 ) -> Action {
     if app.model_popup {
         match key.code {
@@ -335,10 +337,20 @@ fn handle_key(
                 return Action::Continue;
             }
             if text == "/new" {
+                if app.thinking {
+                    app.msgs.push(ChatMsg {
+                        sender: "system".into(),
+                        content: "Cannot start a new conversation while a turn is in progress. Please wait.".into(),
+                    });
+                    return Action::Continue;
+                }
                 app.msgs.clear();
                 app.scroll_offset = 0;
                 let _ = tx_cmd.send(AgentCmd::NewConversation);
                 return Action::Continue;
+            }
+            if is_approval_reply(&text) {
+                let _ = tx_approval.send(text.clone());
             }
             if text.starts_with('/') {
                 let cmd = text.trim_start_matches('/').trim_start().to_string();
@@ -428,6 +440,11 @@ fn filtered_cmds(input: &str) -> Vec<&'static (&'static str, &'static str)> {
     CMDS.iter()
         .filter(move |(n, _)| n.starts_with(&prefix))
         .collect()
+}
+
+fn is_approval_reply(text: &str) -> bool {
+    let t = text.trim().to_lowercase();
+    matches!(t.as_str(), "yes" | "y" | "approve" | "allow" | "no" | "n" | "deny" | "reject")
 }
 
 fn render(f: &mut Frame, app: &App) {
