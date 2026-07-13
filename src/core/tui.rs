@@ -444,7 +444,10 @@ fn filtered_cmds(input: &str) -> Vec<&'static (&'static str, &'static str)> {
 
 fn is_approval_reply(text: &str) -> bool {
     let t = text.trim().to_lowercase();
-    matches!(t.as_str(), "yes" | "y" | "approve" | "allow" | "no" | "n" | "deny" | "reject")
+    matches!(
+        t.as_str(),
+        "yes" | "y" | "approve" | "allow" | "no" | "n" | "deny" | "reject"
+    )
 }
 
 fn render(f: &mut Frame, app: &App) {
