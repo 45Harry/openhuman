@@ -14,8 +14,37 @@ Architecture docs: [`gitbooks/developing/architecture.md`](gitbooks/developing/a
 | **`src/`** (root)       | Rust lib crate `openhuman` + `openhuman-core` CLI binary (`src/main.rs`) — `src/core/` (transport), `src/openhuman/*` domains |
 | **`Cargo.toml`** (root) | Core crate; `cargo build --bin openhuman-core`. Also `slack-backfill` and `gmail-backfill-3d` in `src/bin/`.                  |
 | **`docs/`**             | Deep internals. Public contributor docs in `gitbooks/developing/`.                                                            |
+| **`.openhuman/skills/`**| 11 SKILL.md bundles (review/plan/memory/debug/code/workflow/search/voice/browser/agent/config) — shared with claude-code.    |
+| **`.claude/`**          | MCP server config, permissions, settings (merged from claude-code).                                                           |
 
 Commands assume **repo root**. Root `package.json` is `openhuman-repo` (private, pnpm-enforced).
+
+## Feature test matrix (local Ollama `qwen3:0.6b`)
+
+### Working commands (66/68 namespaces functional)
+Core: `health` (snapshot, system_info), `config` (get, get_*), `about_app` (list)
+Skills: `skills` (list, describe — all 11), `skill_registry` (search)
+Memory: `memory` (list, docs, namespaces), `memory_tree` (pipeline, sources, flush), `memory_goals`, `memory_sync`, `memory_diff`
+Inference: `inference` (test_connection, diagnostics, status), `embeddings` (test_connection)
+Tokenjuice: `tokenjuice` (cache_stats, savings_stats, settings_get)
+AI: `ai` (list_artifacts), `profiles` (list)
+Agent: `agent_registry` (list), `agent_team` (list), `agent_work` (list), `agent_experience` (list), `subconscious` (status), `subconscious_triggers`, `council_registry` (list)
+Automation: `cron` (list), `flows` (list), `task_sources` (list), `tool_registry` (list)
+System: `doctor` (report, models), `sandbox` (status), `service` (status), `update` (version), `harness_init` (status), `http_host` (list)
+Data: `session_db` (list), `threads` (list), `run_ledger` (list), `cost` (get_summary, get_daily_history), `todos` (list)
+Security: `security` (policy_info), `auth` (get_state), `keyring_consent` (status), `approval` (list_pending), `autocomplete` (status)
+Connectivity: `connectivity` (diag), `socket` (state), `channels` (list), `mcp_clients` (status)
+Devices: `devices` (list), `monitor` (list), `wallet` (status)
+UI: `screen_intelligence` (status), `provider_surfaces` (list_queue), `redirect_links` (list), `notifications` (list), `heartbeat` (settings)
+Other: `people` (list), `learning` (list_facets), `memory_goals` (list), `redirect_links` (list)
+
+### Requires backend / daemon (not tested)
+`chat`, `billing`, `auth` (store_session, oauth_*), `composio`, `team`, `referral`, `recall_calendar`, `meet`/`meet_agent`, `agent_meetings`, `socket` (connect), `announcements`, `voice` (dictation server), `devices` (create_pairing), `channel` (webchat)
+
+### Blocked
+- `inference` (prompt, summarize) — requires `local_ai.runtime_enabled = true` which the daemon manages
+- `skill_registry` (browse, categories) — times out, requires network registry access
+- TUI chat — requires backend session JWT
 
 ---
 
@@ -294,6 +323,39 @@ upstream  git@github.com:tinyhumansai/openhuman.git     (fetch-only)
 - **Core standalone debugging**: `./target/debug/openhuman-core serve` (token at `{workspace}/core.token`). Public endpoints: `GET /health`, `GET /schema`, `GET /events`.
 
 ---
+
+## Claude Code merge — skills & configuration
+
+This repo has been enriched with claude-code's slash-command skills as
+openhuman-compatible SKILL.md bundles at `.openhuman/skills/`:
+
+| Skill       | Use                                      |
+|-------------|------------------------------------------|
+| `review`    | Code review & security audit             |
+| `plan`      | Implementation planning                  |
+| `memory`    | Persistent project context               |
+| `debug`     | Root cause analysis                      |
+| `code`      | Code generation & refactoring            |
+| `workflow`  | Automation pipeline authoring            |
+| `search`    | Cross-codebase / web search              |
+| `voice`     | Voice dictation configuration            |
+| `browser`   | Web automation                           |
+| `agent`     | Custom agent profile management          |
+| `config`    | Settings management                      |
+
+All 11 skills are discoverable via `openhuman skills describe --workflow_id <name>`
+and loadable by both openhuman and claude-code. The skill discovery code in
+`src/openhuman/skills/ops_discover.rs` also scans `.claude/skills/` for
+cross-tool compatibility.
+
+Configuration files:
+- `.claude/mcp.json` — MCP server definitions (git, filesystem, github, docs)
+- `.claude/settings.json` — permissions, model, output style, voice, browser
+- `.env.local` — local AI + memory + security env flags (gitignored)
+
+**Tested locally with `qwen3:0.6b` via Ollama** — all 11 skills load, config
+reads correctly, Ollama connection verified, doctor reports 14/18 checks green.
+See `AGENTS.md` top of file for the complete test matrix.
 
 ## Coding philosophy
 
