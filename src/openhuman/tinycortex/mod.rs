@@ -38,10 +38,18 @@ mod config;
 mod embeddings;
 #[cfg(test)]
 mod parity;
+mod queue_driver;
 
 pub use chat::{build_chat_provider, SeamChatProvider};
 pub use config::memory_config_from;
 pub use embeddings::SeamEmbedder;
+pub use queue_driver::{
+    classify_worker_error, HostQueueDelegates, WorkerErrorAction, WorkerReport,
+};
+// `chunk_tree_scope` is a crate-internal pure helper (the single canonical host
+// copy after the W4 handlers deletion); read paths like
+// `memory_tree::retrieval::cover` import it through this seam.
+pub(crate) use queue_driver::chunk_tree_scope;
 
 // Facade re-exports — the rest of the host imports memory-engine types through
 // this one seam so consumer import paths stay stable as the internals flip to
