@@ -1,4 +1,5 @@
 ---
+name: agent
 description: Create and manage custom AI agents
 when_to_use: Need a specialized agent for a specific task
 argument_hint: <agent-config>

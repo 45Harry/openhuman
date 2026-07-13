@@ -1,4 +1,5 @@
 ---
+name: voice
 description: Configure and use voice dictation
 when_to_use: Want to use voice input instead of typing
 argument_hint: <command>

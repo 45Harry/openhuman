@@ -1,4 +1,5 @@
 ---
+name: plan
 description: Create detailed implementation plans for complex features
 when_to_use: Starting a new feature or refactoring
 argument_hint: <feature-description>

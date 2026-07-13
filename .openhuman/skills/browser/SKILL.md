@@ -1,4 +1,5 @@
 ---
+name: browser
 description: Browser automation and web scraping
 when_to_use: Need to interact with web pages or scrape data
 argument_hint: <url-or-task>

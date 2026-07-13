@@ -1,4 +1,5 @@
 ---
+name: memory
 description: Save important context to persistent project memory
 when_to_use: After learning key project details, architecture decisions, or setup steps
 argument_hint: <memory-content>

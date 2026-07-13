@@ -1,4 +1,5 @@
 ---
+name: code
 description: Generate, refactor, or explore code
 when_to_use: Need to write, modify, or understand code
 argument_hint: <description-of-code-task>

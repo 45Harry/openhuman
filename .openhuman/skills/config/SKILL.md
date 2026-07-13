@@ -1,4 +1,5 @@
 ---
+name: config
 description: Update configuration settings
 when_to_use: Need to change OpenHuman settings
 argument_hint: <setting-to-change>

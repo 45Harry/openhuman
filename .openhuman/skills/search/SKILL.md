@@ -1,4 +1,5 @@
 ---
+name: search
 description: Deep search across codebase, docs, and web
 when_to_use: Finding information, examples, or documentation
 argument_hint: <search-query>

@@ -1,4 +1,5 @@
 ---
+name: debug
 description: Deep debugging and root cause analysis
 when_to_use: Facing a bug, crash, or unexpected behavior
 argument_hint: <error-or-description>

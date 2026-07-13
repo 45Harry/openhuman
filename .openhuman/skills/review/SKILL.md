@@ -1,4 +1,5 @@
 ---
+name: review
 description: Comprehensive code review and security audit
 when_to_use: Before committing, merging PRs, or deploying code
 argument_hint: <file-or-dir-path>
