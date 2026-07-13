@@ -223,6 +223,24 @@ fn handle_key(
                 app.menu = false;
                 app.menu_idx = 0;
             }
+            KeyCode::Char(c) => {
+                app.input.insert(app.cursor, c);
+                app.cursor += c.len_utf8();
+                app.menu_idx = 0;
+                if app.input == "/" {
+                    app.menu_idx = 0;
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(prev) = app.input[..app.cursor].chars().next_back() {
+                    app.cursor -= prev.len_utf8();
+                    app.input.remove(app.cursor);
+                }
+                app.menu_idx = 0;
+                if app.input.is_empty() || app.input == "/" {
+                    app.menu = false;
+                }
+            }
             _ => {}
         }
         return Action::Continue;
